@@ -64,7 +64,7 @@ function connectScanlines(paths) {
   return [points];
 }
 
-function rectangleInfill(width, depth, inset, angleDegrees, spacing, snake = false) {
+function rectangleInfill(width, depth, inset, angleDegrees, spacing, snake = false, phase = 0) {
   const halfX = width / 2 - inset;
   const halfY = depth / 2 - inset;
   if (halfX <= 0 || halfY <= 0) return [];
@@ -77,7 +77,8 @@ function rectangleInfill(width, depth, inset, angleDegrees, spacing, snake = fal
   const max = Math.max(...projections);
   const paths = [];
 
-  for (let offset = min + spacing / 2; offset < max; offset += spacing) {
+  const firstOffset = min + spacing / 2 + phase;
+  for (let offset = firstOffset; offset < max; offset += spacing) {
     const intersections = [];
     for (let index = 0; index < corners.length; index += 1) {
       const start = corners[index];
@@ -99,14 +100,15 @@ function rectangleInfill(width, depth, inset, angleDegrees, spacing, snake = fal
   return snake ? connectScanlines(paths) : paths;
 }
 
-function cylinderInfill(radius, inset, angleDegrees, spacing, snake = false) {
+function cylinderInfill(radius, inset, angleDegrees, spacing, snake = false, phase = 0) {
   const innerRadius = radius - inset;
   if (innerRadius <= 0) return [];
   const angle = angleDegrees * Math.PI / 180;
   const direction = point(Math.cos(angle), Math.sin(angle));
   const normal = point(-direction.y, direction.x);
   const paths = [];
-  for (let offset = -innerRadius + spacing / 2; offset < innerRadius; offset += spacing) {
+  const firstOffset = -innerRadius + spacing / 2 + phase;
+  for (let offset = firstOffset; offset < innerRadius; offset += spacing) {
     const halfChord = Math.sqrt(Math.max(0, innerRadius ** 2 - offset ** 2));
     const center = point(normal.x * offset, normal.y * offset);
     const start = point(center.x - direction.x * halfChord, center.y - direction.y * halfChord);
@@ -129,94 +131,239 @@ function concentricInfill(config, inset) {
   return paths;
 }
 
-function isInside(config, x, y, inset) {
+function clipInfillSegment(config, inset, start, end) {
+  let minT = 0;
+  let maxT = 1;
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
   if (config.shape === "cylinder") {
     const radius = config.width / 2 - inset;
-    return radius > 0 && x * x + y * y <= radius * radius;
+    if (radius <= 0) return null;
+    const a = dx * dx + dy * dy;
+    const b = 2 * (start.x * dx + start.y * dy);
+    const c = start.x * start.x + start.y * start.y - radius * radius;
+    const discriminant = b * b - 4 * a * c;
+    if (discriminant < 0) return null;
+    const root = Math.sqrt(discriminant);
+    minT = Math.max(minT, (-b - root) / (2 * a));
+    maxT = Math.min(maxT, (-b + root) / (2 * a));
+  } else {
+    const halfX = config.width / 2 - inset;
+    const halfY = config.depth / 2 - inset;
+    if (halfX <= 0 || halfY <= 0) return null;
+    for (const [position, delta, halfSize] of [[start.x, dx, halfX], [start.y, dy, halfY]]) {
+      if (Math.abs(delta) <= EPSILON) {
+        if (position < -halfSize || position > halfSize) return null;
+        continue;
+      }
+      const first = (-halfSize - position) / delta;
+      const second = (halfSize - position) / delta;
+      minT = Math.max(minT, Math.min(first, second));
+      maxT = Math.min(maxT, Math.max(first, second));
+    }
   }
-  return Math.abs(x) <= config.width / 2 - inset && Math.abs(y) <= config.depth / 2 - inset;
+  if (minT > maxT || maxT - minT <= EPSILON) return null;
+  return [
+    point(start.x + dx * minT, start.y + dy * minT),
+    point(start.x + dx * maxT, start.y + dy * maxT),
+  ];
+}
+
+function connectLineSegments(segments) {
+  const key = ({ x, y }) => `${Math.round(x * 100000)},${Math.round(y * 100000)}`;
+  const nodes = new Map();
+  segments.forEach(([start, end], index) => {
+    for (const [at, other] of [[start, end], [end, start]]) {
+      const nodeKey = key(at);
+      if (!nodes.has(nodeKey)) nodes.set(nodeKey, { point: at, edges: [] });
+      nodes.get(nodeKey).edges.push({ index, other });
+    }
+  });
+  const used = new Uint8Array(segments.length);
+  const paths = [];
+  const trace = (start, firstEdge) => {
+    const points = [start];
+    let nodeKey = key(start);
+    let edge = firstEdge;
+    while (edge && !used[edge.index]) {
+      used[edge.index] = 1;
+      points.push(edge.other);
+      nodeKey = key(edge.other);
+      edge = nodes.get(nodeKey)?.edges.find(({ index }) => !used[index]);
+    }
+    if (points.length > 1) paths.push(points);
+  };
+  nodes.forEach(({ point: start, edges }) => {
+    edges.forEach((edge) => {
+      if (!used[edge.index]) trace(start, edge);
+    });
+  });
+  segments.forEach(([start], index) => {
+    if (!used[index]) trace(start, { index, other: segments[index][1] });
+  });
+  return paths;
 }
 
 function honeycombInfill(config, inset, density, angleDegrees) {
-  const radius = config.lineWidth * 2 / Math.sqrt(density / 100);
-  const xStep = radius * 1.5;
-  const yStep = radius * Math.sqrt(3);
+  const radius = config.lineWidth * 2 / (Math.sqrt(3) * density / 100);
+  const xStep = radius * Math.sqrt(3);
+  const yStep = radius * 1.5;
   const maxX = config.width / 2 - inset;
   const maxY = config.depth / 2 - inset;
-  const extent = Math.hypot(maxX, maxY);
   const rotation = angleDegrees * Math.PI / 180;
   const rotate = (x, y) => point(
     x * Math.cos(rotation) - y * Math.sin(rotation),
     x * Math.sin(rotation) + y * Math.cos(rotation),
   );
-  const paths = [];
+  const segments = [];
+  const seenEdges = new Set();
   let row = 0;
-  for (let y = -extent + radius; y <= extent - radius; y += yStep, row += 1) {
+  for (let y = -maxY - radius; y <= maxY + radius; y += yStep, row += 1) {
     const shift = row % 2 ? xStep / 2 : 0;
-    for (let x = -extent + radius + shift; x <= extent - radius; x += xStep) {
+    for (let x = -maxX - radius + shift; x <= maxX + radius; x += xStep) {
       const vertices = Array.from({ length: 6 }, (_, index) => {
         const angle = (index * 60 + 30) * Math.PI / 180;
         return rotate(x + Math.cos(angle) * radius, y + Math.sin(angle) * radius);
       });
-      if (vertices.every(({ x: vertexX, y: vertexY }) => isInside(config, vertexX, vertexY, inset))) {
-        paths.push({ type: "sparse-infill", points: closePath(vertices) });
+      for (let index = 0; index < vertices.length; index += 1) {
+        const start = vertices[index];
+        const end = vertices[(index + 1) % vertices.length];
+        const startKey = `${Math.round(start.x * 100000)},${Math.round(start.y * 100000)}`;
+        const endKey = `${Math.round(end.x * 100000)},${Math.round(end.y * 100000)}`;
+        const edgeKey = startKey < endKey ? `${startKey}|${endKey}` : `${endKey}|${startKey}`;
+        if (seenEdges.has(edgeKey)) continue;
+        seenEdges.add(edgeKey);
+        const clipped = clipInfillSegment(config, inset, start, end);
+        if (clipped) segments.push(clipped);
       }
     }
   }
-  return paths;
+  return connectLineSegments(segments).map((points) => ({ type: "sparse-infill", points }));
 }
 
-function gyroidInfill(config, inset, angleDegrees, spacing, layerIndex) {
-  const extent = Math.hypot(config.width, config.depth);
+function gyroidInfill(config, inset, angleDegrees, density, workBudget, z) {
+  const period = config.lineWidth * 3 / Math.sqrt(density / 100);
+  const sampleStep = Math.max(0.08, Math.min(config.lineWidth / 2, period / 12));
+  const extentX = config.width / 2 + period;
+  const extentY = config.depth / 2 + period;
   const angle = angleDegrees * Math.PI / 180;
-  const direction = point(Math.cos(angle), Math.sin(angle));
-  const normal = point(-direction.y, direction.x);
-  const amplitude = spacing * 0.22;
-  const wavelength = spacing * 2.5;
-  const sampleStep = Math.max(config.lineWidth / 2, 0.25);
-  const phase = layerIndex * Math.PI / 3;
-  const paths = [];
-  let segmentCount = 0;
-
-  for (let offset = -extent; offset <= extent; offset += spacing) {
-    let points = [];
-    for (let along = -extent; along <= extent + sampleStep; along += sampleStep) {
-      const waveOffset = offset + amplitude * Math.sin(along * Math.PI * 2 / wavelength + phase);
-      const x = direction.x * along + normal.x * waveOffset;
-      const y = direction.y * along + normal.y * waveOffset;
-      if (isInside(config, x, y, inset)) {
-        if (points.length) segmentCount += 1;
-        if (segmentCount > 500000) {
-          throw new Error("Generated toolpath exceeds the safety limit of 50,000 paths or 500,000 moves. Reduce the model size or infill density.");
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  const layerZ = z * 2 * Math.PI / period;
+  const sinZ = Math.sin(layerZ);
+  const cosZ = Math.cos(layerZ);
+  const sampleAxis = (min, max) => {
+    const values = [];
+    for (let value = min; value < max; value += sampleStep) values.push(value);
+    values.push(max);
+    return values;
+  };
+  const xs = sampleAxis(-extentX, extentX);
+  const ys = sampleAxis(-extentY, extentY);
+  workBudget.cells += (xs.length - 1) * (ys.length - 1);
+  if (workBudget.cells > 5000000) {
+    throw new Error("Gyroid generation exceeds its 5,000,000-cell safety limit. Reduce the model size or infill density.");
+  }
+  const xSamples = xs.map((x) => {
+    const rotatedX = (x * cos) * 2 * Math.PI / period;
+    const rotatedY = (-x * sin) * 2 * Math.PI / period;
+    return {
+      sinX: Math.sin(rotatedX), cosX: Math.cos(rotatedX),
+      sinY: Math.sin(rotatedY), cosY: Math.cos(rotatedY),
+    };
+  });
+  const ySamples = ys.map((y) => {
+    const rotatedX = (y * sin) * 2 * Math.PI / period;
+    const rotatedY = (y * cos) * 2 * Math.PI / period;
+    return {
+      sinX: Math.sin(rotatedX), cosX: Math.cos(rotatedX),
+      sinY: Math.sin(rotatedY), cosY: Math.cos(rotatedY),
+    };
+  });
+  const samples = Array.from({ length: ys.length }, (_, yIndex) => {
+    const y = ySamples[yIndex];
+    return xSamples.map((x) => {
+      const sinX = x.sinX * y.cosX + x.cosX * y.sinX;
+      const cosX = x.cosX * y.cosX - x.sinX * y.sinX;
+      const sinY = x.sinY * y.cosY + x.cosY * y.sinY;
+      const cosY = x.cosY * y.cosY - x.sinY * y.sinY;
+      return sinX * cosY + sinY * cosZ + sinZ * cosX;
+    });
+  });
+  const segments = [];
+  const crossing = (first, second, firstValue, secondValue) => {
+    const ratio = firstValue / (firstValue - secondValue);
+    return point(first.x + (second.x - first.x) * ratio, first.y + (second.y - first.y) * ratio);
+  };
+  const corners = [];
+  for (let row = 0; row < ys.length - 1; row += 1) {
+    for (let column = 0; column < xs.length - 1; column += 1) {
+      const values = [
+        samples[row][column], samples[row][column + 1],
+        samples[row + 1][column + 1], samples[row + 1][column],
+      ];
+      let min = Infinity;
+      let max = -Infinity;
+      for (const value of values) {
+        min = Math.min(min, value);
+        max = Math.max(max, value);
+      }
+      if (min > 0 || max < 0) continue;
+      corners[0] = point(xs[column], ys[row]);
+      corners[1] = point(xs[column + 1], ys[row]);
+      corners[2] = point(xs[column + 1], ys[row + 1]);
+      corners[3] = point(xs[column], ys[row + 1]);
+      const crossings = [];
+      for (let edge = 0; edge < 4; edge += 1) {
+        const next = (edge + 1) % 4;
+        if ((values[edge] < 0) !== (values[next] < 0)) {
+          crossings.push({ edge, point: crossing(corners[edge], corners[next], values[edge], values[next]) });
         }
-        points.push(point(x, y));
-      } else if (points.length > 1) {
-        paths.push({ type: "infill", points });
-        points = [];
-      } else {
-        points = [];
+      }
+      const pairs = [];
+      if (crossings.length === 2) {
+        pairs.push([crossings[0], crossings[1]]);
+      } else if (crossings.length === 4) {
+        const centerInside = values.reduce((sum, value) => sum + value, 0) < 0;
+        const firstCornerInside = values[0] < 0;
+        const edgePairs = centerInside === firstCornerInside
+          ? [[0, 1], [2, 3]]
+          : [[3, 0], [1, 2]];
+        edgePairs.forEach(([firstEdge, secondEdge]) => {
+          pairs.push([
+            crossings.find(({ edge }) => edge === firstEdge),
+            crossings.find(({ edge }) => edge === secondEdge),
+          ]);
+        });
+      }
+      for (const [first, second] of pairs) {
+        const clipped = clipInfillSegment(config, inset, first.point, second.point);
+        if (clipped) segments.push(clipped);
       }
     }
-    if (points.length > 1) paths.push({ type: "infill", points });
   }
-  return paths;
+  return connectLineSegments(segments).map((points) => ({ type: "sparse-infill", points }));
 }
 
-function sparseInfill(config, inset, angleDegrees, spacing, layerIndex) {
-  const rectangular = (angle) => rectangleInfill(
-    config.width, config.depth, inset, angle, spacing, true,
+function sparseInfill(config, inset, angleDegrees, spacing, layerIndex, workBudget, z) {
+  const phase = (fraction) => spacing * fraction;
+  const rectangular = (angle, lineSpacing = spacing) => rectangleInfill(
+    config.width, config.depth, inset, angle, lineSpacing, false,
   ).map((points) => ({ type: "sparse-infill", points }));
-  const circular = (angle) => cylinderInfill(
-    config.width / 2, inset, angle, spacing, true,
+  const circular = (angle, lineSpacing = spacing) => cylinderInfill(
+    config.width / 2, inset, angle, lineSpacing, false,
   ).map((points) => ({ type: "sparse-infill", points }));
+  const phasedScans = (angle, shift, lineSpacing = spacing) => (config.shape === "cylinder"
+    ? cylinderInfill(config.width / 2, inset, angle, lineSpacing, false, shift)
+    : rectangleInfill(config.width, config.depth, inset, angle, lineSpacing, false, shift))
+    .map((points) => ({ type: "sparse-infill", points }));
   const scans = config.shape === "cylinder" ? circular : rectangular;
 
   if (config.sparsePattern === "honeycomb") {
     return honeycombInfill(config, inset, config.infillPercent, angleDegrees);
   }
   if (config.sparsePattern === "gyroid") {
-    return gyroidInfill(config, inset, angleDegrees, spacing, layerIndex)
-      .map((path) => ({ ...path, type: "sparse-infill" }));
+    return gyroidInfill(config, inset, angleDegrees, config.infillPercent, workBudget, z);
   }
   if (config.sparsePattern === "grid") {
     return [...scans(angleDegrees), ...scans(angleDegrees + 90)];
@@ -224,10 +371,14 @@ function sparseInfill(config, inset, angleDegrees, spacing, layerIndex) {
   if (config.sparsePattern === "triangles") {
     return [0, 60, 120].flatMap((rotation) => scans(angleDegrees + rotation));
   }
-  const layerAngle = config.sparsePattern === "cubic"
-    ? angleDegrees + layerIndex * 45
-    : angleDegrees + (layerIndex % 2) * 90;
-  return scans(layerAngle);
+  if (config.sparsePattern === "cubic") {
+    const cubicSpacing = spacing * 3;
+    const shift = phase((layerIndex % 4) / 4) * 3;
+    return [0, 60, 120].flatMap((rotation) => (
+      phasedScans(angleDegrees + rotation, shift, cubicSpacing)
+    ));
+  }
+  return scans(angleDegrees + (layerIndex % 2) * 90);
 }
 
 function orientationOffset(orientation) {
@@ -472,7 +623,7 @@ function validate(config) {
   return values;
 }
 
-function makeLayerPaths(config, layerIndex, z, totalLayers) {
+function makeLayerPaths(config, layerIndex, z, totalLayers, workBudget) {
   const paths = [];
   const isCylinder = config.shape === "cylinder";
   const outerRadius = config.width / 2;
@@ -528,8 +679,7 @@ function makeLayerPaths(config, layerIndex, z, totalLayers) {
     for (const points of infill) paths.push({ type: "solid-infill", points });
   } else if (config.infillPercent > 0) {
     const spacing = config.lineWidth * 100 / config.infillPercent;
-    const sparseAngle = config.sparsePattern === "cubic" ? config.infillAngle : infillAngle;
-    paths.push(...sparseInfill(config, inset, sparseAngle, spacing, layerIndex));
+    paths.push(...sparseInfill(config, inset, config.infillAngle, spacing, layerIndex, workBudget, z));
   }
   return paths.map((path) => ({ ...path, z }));
 }
@@ -548,12 +698,13 @@ export function generateGcode(input) {
   }
   const filamentArea = Math.PI * (config.filamentDiameter / 2) ** 2;
   const layerPaths = [];
+  const workBudget = { cells: 0 };
   let cumulativeZ = 0;
   let segmentCount = 0;
   let pathCount = 0;
   for (let index = 0; index < layerHeights.length; index += 1) {
     cumulativeZ += layerHeights[index];
-    const pathsForLayer = makeLayerPaths(config, index, cumulativeZ, layerHeights.length);
+    const pathsForLayer = makeLayerPaths(config, index, cumulativeZ, layerHeights.length, workBudget);
     pathCount += pathsForLayer.length;
     segmentCount += pathsForLayer.reduce((sum, path) => sum + path.points.length - 1, 0);
     if (pathCount > 50000 || segmentCount > 500000) {

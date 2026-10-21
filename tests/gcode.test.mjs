@@ -128,6 +128,182 @@ test("supports all sparse infill patterns and a wall-free sparse specimen", () =
   }
 });
 
+test("rectilinear alternates perpendicular layers while grid and triangles keep fixed layer directions", () => {
+  const createLayers = (sparsePattern) => generateGcode({
+    ...baseConfig,
+    height: 1.04,
+    wallCount: 0,
+    topLayers: 0,
+    bottomLayers: 0,
+    skirtLoops: 0,
+    sparsePattern,
+  }).preview.allLayers;
+  const directions = (layer) => layer.paths.map(({ points }) => {
+    const first = points[0];
+    const last = points.at(-1);
+    const angle = (Math.atan2(last.y - first.y, last.x - first.x) * 180 / Math.PI + 180) % 180;
+    return Math.round(angle * 1e6) / 1e6;
+  });
+  const matches = (actual, expected) => Math.abs(((actual - expected + 90) % 180 + 180) % 180 - 90) < 1e-6;
+
+  const rectilinear = createLayers("rectilinear");
+  assert.ok(directions(rectilinear[0]).every((angle) => matches(angle, 45)));
+  assert.ok(directions(rectilinear[1]).every((angle) => matches(angle, 135)));
+
+  const grid = createLayers("grid");
+  assert.ok(directions(grid[0]).some((angle) => matches(angle, 45)));
+  assert.ok(directions(grid[0]).some((angle) => matches(angle, 135)));
+  assert.deepEqual(directions(grid[0]).sort(), directions(grid[1]).sort());
+
+  const triangles = createLayers("triangles");
+  const expectedTriangleAngles = [45, 105, 165];
+  for (const layer of triangles.slice(0, 2)) {
+    for (const expected of expectedTriangleAngles) {
+      assert.ok(directions(layer).some((angle) => matches(angle, expected)));
+    }
+  }
+  assert.deepEqual(directions(triangles[0]).sort(), directions(triangles[1]).sort());
+});
+
+test("honeycomb shares clipped hexagon edges and preserves the wall overlap inset", () => {
+  const result = generateGcode({
+    ...baseConfig,
+    height: 0.44,
+    wallCount: 2,
+    topLayers: 0,
+    bottomLayers: 0,
+    skirtLoops: 0,
+    sparsePattern: "honeycomb",
+  });
+  const layer = result.preview.allLayers[1];
+  const infillPaths = layer.paths.filter(({ type }) => type === "sparse-infill");
+  const edgeKeys = new Set();
+  const insetSpacing = baseConfig.lineWidth - baseConfig.layerHeight * (1 - Math.PI / 4);
+  const innermostWallInset = baseConfig.lineWidth / 2 + insetSpacing;
+  const infillInset = Math.max(
+    baseConfig.lineWidth / 2,
+    innermostWallInset + baseConfig.lineWidth * (1 - baseConfig.infillOverlap / 100) - baseConfig.lineWidth / 2,
+  );
+  const limitX = baseConfig.width / 2 - infillInset;
+  const limitY = baseConfig.depth / 2 - infillInset;
+  assert.ok(infillPaths.length > 0);
+  for (const { points } of infillPaths) {
+    for (const { x, y } of points) {
+      assert.ok(Math.abs(x - baseConfig.centerX) <= limitX + 1e-5);
+      assert.ok(Math.abs(y - baseConfig.centerY) <= limitY + 1e-5);
+    }
+    for (let index = 1; index < points.length; index += 1) {
+      const keys = [points[index - 1], points[index]]
+        .map(({ x, y }) => `${Math.round(x * 100000)},${Math.round(y * 100000)}`)
+        .sort();
+      const edgeKey = keys.join("|");
+      assert.equal(edgeKeys.has(edgeKey), false, "a shared hexagon edge must be extruded only once");
+      edgeKeys.add(edgeKey);
+    }
+  }
+  assert.ok(
+    infillPaths.some(({ points }) => points.some(({ x }) => Math.abs(Math.abs(x - baseConfig.centerX) - limitX) < 1e-4)),
+    "hexagon paths should be clipped to the overlap-adjusted wall boundary",
+  );
+});
+
+test("cubic infill forms a triangular lattice that shifts between layers", () => {
+  const result = generateGcode({
+    ...baseConfig,
+    height: 1.04,
+    wallCount: 0,
+    topLayers: 0,
+    bottomLayers: 0,
+    skirtLoops: 0,
+    sparsePattern: "cubic",
+  });
+  const layers = result.preview.allLayers.slice(0, 2);
+  const lineData = layers.map(({ paths }) => paths.map(({ points }) => {
+    const [first, last] = [points[0], points.at(-1)];
+    const angle = (Math.atan2(last.y - first.y, last.x - first.x) * 180 / Math.PI + 180) % 180;
+    const normalX = -Math.sin(angle * Math.PI / 180);
+    const normalY = Math.cos(angle * Math.PI / 180);
+    const offset = ((first.x + last.x) / 2 - baseConfig.centerX) * normalX
+      + ((first.y + last.y) / 2 - baseConfig.centerY) * normalY;
+    return { angle, offset };
+  }));
+  for (const layer of lineData) {
+    assert.ok(layer.some(({ angle }) => Math.abs(angle - 45) < 1e-6));
+    assert.ok(layer.some(({ angle }) => Math.abs(angle - 105) < 1e-6));
+    assert.ok(layer.some(({ angle }) => Math.abs(angle - 165) < 1e-6));
+  }
+  assert.notDeepEqual(lineData[0], lineData[1], "successive cubic layers shift to form diagonal connections");
+});
+
+test("gyroid infill follows the implicit gyroid surface and changes with layer height", () => {
+  const result = generateGcode({
+    ...baseConfig,
+    height: 0.44,
+    wallCount: 0,
+    topLayers: 0,
+    bottomLayers: 0,
+    skirtLoops: 0,
+    sparsePattern: "gyroid",
+  });
+  const [firstLayer, secondLayer] = result.preview.allLayers;
+  const period = baseConfig.lineWidth * 3 / Math.sqrt(baseConfig.infillPercent / 100);
+  const angle = baseConfig.infillAngle * Math.PI / 180;
+  const residuals = firstLayer.paths.flatMap(({ points }) => points
+    .filter(({ x, y }) => Math.abs(x - baseConfig.centerX) < 10 && Math.abs(y - baseConfig.centerY) < 10)
+    .map(({ x, y }) => {
+      const localX = x - baseConfig.centerX;
+      const localY = y - baseConfig.centerY;
+      const rotatedX = (localX * Math.cos(angle) + localY * Math.sin(angle)) * 2 * Math.PI / period;
+      const rotatedY = (-localX * Math.sin(angle) + localY * Math.cos(angle)) * 2 * Math.PI / period;
+      const rotatedZ = firstLayer.z * 2 * Math.PI / period;
+      return Math.abs(
+        Math.sin(rotatedX) * Math.cos(rotatedY)
+        + Math.sin(rotatedY) * Math.cos(rotatedZ)
+        + Math.sin(rotatedZ) * Math.cos(rotatedX),
+      );
+    }));
+  assert.ok(firstLayer.paths.some(({ points }) => points.length > 4));
+  assert.ok(residuals.length > 0);
+  assert.ok(Math.max(...residuals) < 0.15, "sampled paths should follow the gyroid zero surface");
+  assert.notDeepEqual(firstLayer.paths, secondLayer.paths);
+});
+
+test("honeycomb clips shared cells to both rectangular and circular perimeters", () => {
+  for (const shape of ["cuboid", "cylinder"]) {
+    const result = generateGcode({
+      ...baseConfig,
+      shape,
+      height: 0.44,
+      wallCount: 2,
+      topLayers: 0,
+      bottomLayers: 0,
+      skirtLoops: 0,
+      sparsePattern: "honeycomb",
+    });
+    const paths = result.preview.allLayers[1].paths.filter(({ type }) => type === "sparse-infill");
+    const insetSpacing = baseConfig.lineWidth - baseConfig.layerHeight * (1 - Math.PI / 4);
+    const wallInset = baseConfig.lineWidth / 2 + insetSpacing;
+    const infillInset = Math.max(
+      baseConfig.lineWidth / 2,
+      wallInset + baseConfig.lineWidth * (1 - baseConfig.infillOverlap / 100) - baseConfig.lineWidth / 2,
+    );
+    const limitX = baseConfig.width / 2 - infillInset;
+    const limitY = baseConfig.depth / 2 - infillInset;
+    assert.ok(paths.length > 0);
+    for (const { points } of paths) {
+      for (const { x, y } of points) {
+        const localX = x - baseConfig.centerX;
+        const localY = y - baseConfig.centerY;
+        assert.ok(Math.abs(localX) <= limitX + 1e-5);
+        assert.ok(Math.abs(localY) <= limitY + 1e-5);
+        if (shape === "cylinder") {
+          assert.ok(Math.hypot(localX, localY) <= limitX + 1e-5);
+        }
+      }
+    }
+  }
+});
+
 test("monotonic infill connects scanlines and concentric skins form nested loops", () => {
   const monotonic = generateGcode({
     ...baseConfig,
