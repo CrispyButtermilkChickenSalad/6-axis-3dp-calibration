@@ -156,10 +156,10 @@ h1 span { color: var(--green); }
 .preview-legend-items { display: flex; flex-wrap: wrap; gap: 8px 14px; color: #657168; font-size: 9px; }
 .preview-legend-items span { display: inline-flex; align-items: center; gap: 5px; }
 .legend-swatch { display: inline-block; width: 13px; height: 4px; border-radius: 4px; }
-.legend-prime { background: #438c95; }
-.legend-wall { background: #725587; }
-.legend-solid { background: #c17baf; }
-.legend-sparse { background: #9a60b5; }
+.legend-prime { background: #007c83; }
+.legend-wall { background: #2457a7; }
+.legend-solid { background: #c45100; }
+.legend-sparse { background: #7338a6; }
 .preview-legend.is-uniform .legend-swatch { background: #9a60b5; }
 .ready-badge { display: flex; align-items: center; gap: 7px; padding: 7px 9px; border-radius: 20px; background: #f1f3f0; color: #778078; font: 9px var(--mono); letter-spacing: .04em; }
 .ready-badge.is-ready { background: #e8f2eb; color: var(--green-dark); }
@@ -280,10 +280,10 @@ body[data-theme="dark"] .pattern-art:has(.slicer-pattern-icon) { background: #29
 body[data-theme="dark"] .preview-legend-heading,
 body[data-theme="dark"] .legend-toggle,
 body[data-theme="dark"] .preview-legend-items { color: #b9aec3; }
-body[data-theme="dark"] .legend-prime { background: #86c4c7; }
-body[data-theme="dark"] .legend-wall { background: #9274a7; }
-body[data-theme="dark"] .legend-solid { background: #d1a1de; }
-body[data-theme="dark"] .legend-sparse { background: #bb88d0; }
+body[data-theme="dark"] .legend-prime { background: #45d6d0; }
+body[data-theme="dark"] .legend-wall { background: #78a9ff; }
+body[data-theme="dark"] .legend-solid { background: #ffac5c; }
+body[data-theme="dark"] .legend-sparse { background: #c99bff; }
 body[data-theme="dark"] .preview-legend.is-uniform .legend-swatch { background: #d0b7e7; }
 body[data-theme="dark"] .mode-path { stroke: #c2a4da; }
 body[data-theme="dark"] .mode-arrow { stroke: #d0b7e7; }

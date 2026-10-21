@@ -22,8 +22,8 @@ export function createScenePreview(canvas) {
     const height = rect.height;
     const dark = document.body.dataset.theme === "dark";
     const colors = dark
-      ? { background: "#211c28", grid: "#40364a", plane: "#2a2432", text: "#bdb0c8", side: "#74558f", sideDark: "#4e3863", top: "#a383bd", toolpath: "#d0b7e7", wallPath: "#9274a7", solidPath: "#d1a1de", sparsePath: "#bb88d0", prime: "#86c4c7" }
-      : { background: "#f7f5f9", grid: "#e5deeb", plane: "#f0ecf4", text: "#796e82", side: "#9477aa", sideDark: "#69517f", top: "#c4afd4", toolpath: "#9a60b5", wallPath: "#725587", solidPath: "#c17baf", sparsePath: "#9a60b5", prime: "#438c95" };
+      ? { background: "#211c28", grid: "#40364a", plane: "#2a2432", text: "#bdb0c8", side: "#74558f", sideDark: "#4e3863", top: "#a383bd", toolpath: "#c99bff", wallPath: "#78a9ff", solidPath: "#ffac5c", sparsePath: "#c99bff", prime: "#45d6d0" }
+      : { background: "#f7f5f9", grid: "#e5deeb", plane: "#f0ecf4", text: "#796e82", side: "#9477aa", sideDark: "#69517f", top: "#c4afd4", toolpath: "#7338a6", wallPath: "#2457a7", solidPath: "#c45100", sparsePath: "#7338a6", prime: "#007c83" };
     context.fillStyle = colors.background;
     context.fillRect(0, 0, width, height);
     if (!model) {
