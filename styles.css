@@ -115,6 +115,12 @@ h1 span { color: var(--green); }
 .pattern-art { display: grid; place-items: center; min-height: 54px; border-radius: 4px; background: #f4f1f7; }
 .pattern-art svg { width: 100%; max-width: 150px; height: 48px; fill: none; stroke: #9270b0; stroke-width: 2.1; stroke-linecap: round; stroke-linejoin: round; }
 .pattern-art svg .pattern-arrow { stroke: #ce8152; stroke-width: 1.7; }
+.pattern-art svg .pattern-boundary { stroke: #a99bb4; stroke-width: 1; }
+.pattern-art svg .pattern-previous { stroke: #c8b9d5; stroke-width: 1.2; }
+.pattern-art svg .pattern-previous-faint { stroke: #ddd3e5; stroke-width: 1.2; }
+.pattern-art svg .pattern-current { stroke: #735097; stroke-width: 1.7; }
+.pattern-option:has(input[value="triangles"]:checked) .pattern-art svg .pattern-current,
+.pattern-option:has(input[value="gyroid"]:checked) .pattern-art svg .pattern-current { stroke: #ce8152; }
 .pattern-name { color: #455047; font-size: 9px; font-weight: 600; }
 .pattern-option .orientation-note { font-size: 8px; }
 .advanced { margin-top: 26px; border-top: 1px solid var(--line); }
@@ -138,6 +144,7 @@ h1 span { color: var(--green); }
 .preview-layer-select input { width: 100%; margin: 3px 0 0; accent-color: var(--green); cursor: pointer; }
 .preview-layer-select input:disabled { cursor: not-allowed; opacity: .5; }
 .preview-layer-labels { display: flex; justify-content: space-between; color: #929b93; font: 8px var(--mono); letter-spacing: .06em; }
+.preview-layer-note { margin: 0; color: #929b93; font-size: 9px; line-height: 1.4; }
 .ready-badge { display: flex; align-items: center; gap: 7px; padding: 7px 9px; border-radius: 20px; background: #f1f3f0; color: #778078; font: 9px var(--mono); letter-spacing: .04em; }
 .ready-badge.is-ready { background: #e8f2eb; color: var(--green-dark); }
 .ready-badge.is-ready .status-dot { background: #4d9664; }
@@ -255,6 +262,12 @@ body[data-theme="dark"] .mode-bead { stroke: #b9956a; }
 body[data-theme="dark"] .mode-tip,
 body[data-theme="dark"] .mode-tip-dot { fill: #e0a16b; stroke: #68442f; }
 body[data-theme="dark"] .pattern-art svg .pattern-arrow { stroke: #e0a16b; }
+body[data-theme="dark"] .pattern-art svg .pattern-boundary { stroke: #81718e; }
+body[data-theme="dark"] .pattern-art svg .pattern-previous { stroke: #746681; }
+body[data-theme="dark"] .pattern-art svg .pattern-previous-faint { stroke: #5b5065; }
+body[data-theme="dark"] .pattern-art svg .pattern-current { stroke: #d0b7e7; }
+body[data-theme="dark"] .pattern-option:has(input[value="triangles"]:checked) .pattern-art svg .pattern-current,
+body[data-theme="dark"] .pattern-option:has(input[value="gyroid"]:checked) .pattern-art svg .pattern-current { stroke: #e0a16b; }
 body[data-theme="dark"] .ready-badge { background: #39313f; color: #c8bdce; }
 body[data-theme="dark"] .ready-badge.is-ready { background: #383047; color: #ddc7f0; }
 body[data-theme="dark"] .preview-note { border-color: #514331; background: #30291f; }

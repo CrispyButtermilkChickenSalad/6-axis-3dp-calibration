@@ -664,15 +664,24 @@ export function generateGcode(input) {
   }
   const previewIndices = [0, Math.floor((layerHeights.length - 1) / 2), layerHeights.length - 1];
   const previewNames = ["FIRST LAYER", "MIDDLE LAYER", "LAST LAYER"];
-  const previewLayers = previewIndices.map((layerIndex, index) => {
-    const z = layerHeights.slice(0, layerIndex + 1).reduce((sum, value) => sum + value, 0);
-    const layerPaths = makeLayerPaths(config, layerIndex, z, layerHeights.length)
+  const layerZs = [];
+  let previewZ = 0;
+  for (const layerHeight of layerHeights) {
+    previewZ += layerHeight;
+    layerZs.push(previewZ);
+  }
+  const toPreviewLayer = (layerIndex, name = `LAYER ${layerIndex + 1}`) => {
+    const z = layerZs[layerIndex];
+    const pathsForLayer = layerPaths[layerIndex]
       .map((path) => ({
         type: path.type,
+        z: path.z,
         points: path.points.map(({ x, y }) => ({ x: config.centerX + x, y: config.centerY + y })),
       }));
-    return { name: previewNames[index], number: layerIndex + 1, z, paths: layerPaths };
-  });
+    return { name, number: layerIndex + 1, z, paths: pathsForLayer };
+  };
+  const allPreviewLayers = layerHeights.map((_, layerIndex) => toPreviewLayer(layerIndex));
+  const previewLayers = previewIndices.map((layerIndex, index) => toPreviewLayer(layerIndex, previewNames[index]));
   return {
     text: `${lines.join("\n")}\n`,
     metrics: { layers: layerHeights.length, pathCount: paths.length, filamentLength, filamentVolume: filamentLength * filamentArea },
@@ -690,7 +699,7 @@ export function generateGcode(input) {
       bedMinY: config.bedMinY,
       bedMaxY: config.bedMaxY,
       bedShape: config.bedShape,
-      layers: layerHeights.length,
+      layerCount: layerHeights.length,
       layerHeight: config.layerHeight,
       firstLayerHeight: config.firstLayerHeight,
       lineWidth: config.lineWidth,
@@ -703,6 +712,7 @@ export function generateGcode(input) {
       rotaryCMode: config.rotaryCMode,
       paths: previewLayers[2].paths,
       layers: previewLayers,
+      allLayers: allPreviewLayers,
     },
   };
 }

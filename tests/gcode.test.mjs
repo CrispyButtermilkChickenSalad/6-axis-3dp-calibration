@@ -252,6 +252,19 @@ test("preview layers expose first-layer skirt and purge, middle, and last paths"
   assert.ok(result.preview.layers[0].paths.some(({ type }) => type === "purge"));
   assert.ok(result.preview.layers[0].paths.some(({ type }) => type === "skirt"));
   assert.equal(result.preview.layers[2].number, result.metrics.layers);
+  assert.equal(result.preview.allLayers.length, result.metrics.layers);
+  assert.equal(result.preview.allLayers[0].number, 1);
+  assert.equal(result.preview.allLayers.at(-1).number, result.metrics.layers);
+  assert.ok(result.preview.allLayers.every((layer) => layer.paths.every((path) => Number.isFinite(path.z))));
+});
+
+test("full preview keeps every generated layer while slider anchors remain first, middle and last", () => {
+  const result = generateGcode({ ...baseConfig, height: 2.1 });
+  assert.equal(result.metrics.layers, 11);
+  assert.deepEqual(result.preview.layers.map(({ number }) => number), [1, 6, 11]);
+  assert.equal(result.preview.allLayers.length, 11);
+  assert.ok(result.preview.allLayers[0].z < result.preview.allLayers[5].z);
+  assert.ok(result.preview.allLayers[5].z < result.preview.allLayers[10].z);
 });
 
 test("optional purge priming uses two overlapping minimum-length lines at 200% flow", () => {

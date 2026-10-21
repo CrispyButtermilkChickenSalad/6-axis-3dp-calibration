@@ -110,6 +110,32 @@ export function createScenePreview(canvas) {
       context.lineWidth = lineWidth;
       context.stroke();
     };
+    const pathColor = (path) => path.type === "wall" ? colors.sideDark
+      : path.type === "purge" ? colors.purge
+        : path.type === "skirt" ? colors.skirt : colors.toolpath;
+    const drawLayer = (layer, opacity) => {
+      context.save();
+      context.globalAlpha = opacity;
+      for (const type of ["wall", "solid-infill", "sparse-infill", "purge", "skirt"]) {
+        context.beginPath();
+        for (const path of layer.paths) {
+          if (path.type !== type || path.points.length < 2) continue;
+          const z = path.z ?? layer.z;
+          const first = path.points[0];
+          const start = screen(first.x, first.y, z);
+          context.moveTo(start.x, start.y);
+          for (let index = 1; index < path.points.length; index += 1) {
+            const point = path.points[index];
+            const projectedPoint = screen(point.x, point.y, z);
+            context.lineTo(projectedPoint.x, projectedPoint.y);
+          }
+        }
+        context.strokeStyle = pathColor({ type });
+        context.lineWidth = 1;
+        context.stroke();
+      }
+      context.restore();
+    };
 
     const bedCenterX = (model.bedMinX + model.bedMaxX) / 2;
     const bedCenterY = (model.bedMinY + model.bedMaxY) / 2;
@@ -186,12 +212,17 @@ export function createScenePreview(canvas) {
     }
 
     const topZ = model.viewZ ?? heightMM;
+    if (model.allLayers) {
+      const activeLayerNumber = model.activeLayerNumber;
+      model.allLayers.forEach((layer) => {
+        if (layer.number === activeLayerNumber) return;
+        const progress = layer.number / model.allLayers.length;
+        drawLayer(layer, 0.14 + progress * 0.34);
+      });
+    }
     model.paths.forEach((path) => {
-      const points = path.points.map((item) => screen(item.x, item.y, topZ));
-      const pathColor = path.type === "wall" ? colors.sideDark
-        : path.type === "purge" ? colors.purge
-          : path.type === "skirt" ? colors.skirt : colors.toolpath;
-      drawDirectionalPath(context, points, pathColor);
+      const points = path.points.map((item) => screen(item.x, item.y, path.z ?? topZ));
+      drawDirectionalPath(context, points, pathColor(path));
     });
     if (!nozzlePosition) {
       const firstPath = model.paths.find((path) => path.points.length > 1 && !["purge", "skirt"].includes(path.type))
@@ -453,6 +484,7 @@ export function createScenePreview(canvas) {
       model = nextModel;
       model.viewZ = model.height;
       model.viewLabel = "LAST LAYER";
+      model.activeLayerNumber = model.layers?.at(-1)?.number;
       model.paths = model.layers?.at(-1)?.paths ?? model.paths;
       draw();
     },
@@ -462,6 +494,7 @@ export function createScenePreview(canvas) {
       model.paths = layer.paths;
       model.viewZ = layer.z;
       model.viewLabel = layer.name;
+      model.activeLayerNumber = layer.number;
       nozzlePosition = null;
       draw();
     },
