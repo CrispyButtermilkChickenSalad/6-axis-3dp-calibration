@@ -15,6 +15,10 @@ function finite(value, name) {
   return Number(value);
 }
 
+function pathSpacing(width, height) {
+  return width - height * (1 - Math.PI / 4);
+}
+
 function ranged(value, name, min, max) {
   const number = finite(value, name);
   if (number < min || number > max) throw new Error(`${name} must be between ${min} and ${max}.`);
@@ -329,6 +333,9 @@ function validate(config) {
   const layerHeight = ranged(config.layerHeight, "Layer height", 0.01, Math.min(2, holeDiameter * 1.5));
   const firstLayerHeight = ranged(config.firstLayerHeight, "First layer height", 0.01, Math.min(2, holeDiameter * 1.5));
   if (firstLayerHeight > height) throw new Error("First layer height cannot exceed the model height.");
+  if (pathSpacing(lineWidth, layerHeight) <= 0 || pathSpacing(lineWidth, firstLayerHeight) <= 0) {
+    throw new Error("Line width must exceed the layer-height overlap compensation for both regular and first layers.");
+  }
   const clearance = minimumLayerHeight(tipDiameter, tiltAngle);
   if (firstLayerHeight + EPSILON < clearance || layerHeight + EPSILON < clearance) {
     throw new Error(`Layer height must be at least ${format(clearance, 3)} mm for a ${format(tiltAngle, 1)}° tilt and ${format(tipDiameter, 2)} mm nozzle tip.`);
@@ -442,7 +449,14 @@ function validate(config) {
       throw new Error("Specimen, skirt or purge line falls outside the configured circular bed.");
     }
   }
-  if (wallCount * lineWidth * 2 >= Math.min(width, depth)) {
+  const widestWallSpacing = Math.max(
+    pathSpacing(lineWidth, layerHeight),
+    pathSpacing(lineWidth, firstLayerHeight),
+  );
+  const innermostWallInset = wallCount > 0
+    ? lineWidth / 2 + (wallCount - 1) * widestWallSpacing
+    : 0;
+  if (wallCount > 0 && innermostWallInset * 2 >= Math.min(width, depth)) {
     throw new Error("The selected wall count and line width are too large for this specimen.");
   }
   return values;
@@ -452,6 +466,10 @@ function makeLayerPaths(config, layerIndex, z, totalLayers) {
   const paths = [];
   const isCylinder = config.shape === "cylinder";
   const outerRadius = config.width / 2;
+  const layerHeight = layerIndex === 0
+    ? config.firstLayerHeight
+    : Math.min(config.layerHeight, config.height - config.firstLayerHeight - (layerIndex - 1) * config.layerHeight);
+  const wallSpacing = pathSpacing(config.lineWidth, layerHeight);
   const infillAngle = config.infillAngle + (layerIndex % 2) * 90;
   const isSolid = layerIndex < config.bottomLayers || layerIndex >= totalLayers - config.topLayers;
 
@@ -471,15 +489,20 @@ function makeLayerPaths(config, layerIndex, z, totalLayers) {
   }
 
   for (let wall = 0; wall < config.wallCount; wall += 1) {
-    const inset = config.lineWidth * (wall + 0.5);
+    const inset = config.lineWidth / 2 + wall * wallSpacing;
     const outline = isCylinder
       ? circlePath(outerRadius - inset)
       : rectanglePath(config.width, config.depth, inset);
     if (outline.length) paths.push({ type: "wall", points: outline });
   }
 
-  const inset = Math.max(config.lineWidth / 2, config.wallCount * config.lineWidth
-    - config.lineWidth * config.infillOverlap / 100);
+  const innermostWallInset = config.wallCount > 0
+    ? config.lineWidth / 2 + (config.wallCount - 1) * wallSpacing
+    : 0;
+  const inset = Math.max(
+    config.lineWidth / 2,
+    innermostWallInset + config.lineWidth * (1 - config.infillOverlap / 100) - config.lineWidth / 2,
+  );
   if (isSolid) {
     const infill = config.solidPattern === "concentric"
       ? concentricInfill(config, inset)
@@ -526,7 +549,7 @@ export function generateGcode(input) {
   const lines = [
     "; Primitive tilting-nozzle test specimen",
     `; Shape: ${config.shape}; dimensions: ${format(config.width)} x ${format(config.depth)} x ${format(config.height)} mm`,
-    `; Walls: ${config.wallCount}; sparse infill: ${config.sparsePattern} at ${format(config.infillPercent, 0)}%; solid infill: ${config.solidPattern}; top/bottom layers: ${config.topLayers}/${config.bottomLayers}; wall overlap: ${format(config.infillOverlap, 0)}%`,
+    `; Walls: ${config.wallCount}; sparse infill: ${config.sparsePattern} at ${format(config.infillPercent, 0)}%; solid infill: ${config.solidPattern}; top/bottom layers: ${config.topLayers}/${config.bottomLayers}; infill-to-wall overlap: ${format(config.infillOverlap, 0)}%`,
     `; Infill base angle: ${format(config.infillAngle, 1)} degrees`,
     `; Tilt: ${format(config.tiltAngle, 1)} degrees; orientation: ${config.orientation}; angle mode: ${config.angleMode}`,
     `; Nozzle tip: ${format(config.tipDiameter, 2)} mm; hole: ${format(config.holeDiameter, 2)} mm; layer height: ${format(config.layerHeight, 3)} mm; extrusion multiplier: ${format(config.extrusionMultiplier * 100, 1)}%`,

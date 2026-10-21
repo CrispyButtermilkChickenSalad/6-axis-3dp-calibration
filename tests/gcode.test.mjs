@@ -144,6 +144,46 @@ test("monotonic infill connects scanlines and concentric skins form nested loops
   assert.ok(concentric.preview.paths.filter((path) => path.type === "solid-infill").length > 1);
 });
 
+test("wall centerlines use Slic3r's normal overlap compensation", () => {
+  const result = generateGcode({
+    ...baseConfig,
+    height: 0.5,
+    firstLayerHeight: 0.3,
+    wallCount: 3,
+  });
+  const wallMinX = (paths) => paths
+    .filter(({ type }) => type === "wall")
+    .map(({ points }) => Math.min(...points.map(({ x }) => x)))
+    .sort((left, right) => left - right);
+  const firstLayerWallMinX = wallMinX(result.preview.layers[0].paths);
+  const regularLayerWallMinX = wallMinX(result.preview.layers[2].paths);
+  const firstLayerSpacing = baseConfig.lineWidth - 0.3 * (1 - Math.PI / 4);
+  const regularLayerSpacing = baseConfig.lineWidth - baseConfig.layerHeight * (1 - Math.PI / 4);
+  assert.equal(firstLayerWallMinX.length, 3);
+  assert.equal(regularLayerWallMinX.length, 3);
+  assert.ok(Math.abs((firstLayerWallMinX[1] - firstLayerWallMinX[0]) - firstLayerSpacing) < 1e-6);
+  assert.ok(Math.abs((regularLayerWallMinX[1] - regularLayerWallMinX[0]) - regularLayerSpacing) < 1e-6);
+  assert.ok(Math.abs((regularLayerWallMinX[2] - regularLayerWallMinX[1]) - regularLayerSpacing) < 1e-6);
+
+  const concentric = generateGcode({
+    ...baseConfig,
+    height: 0.2,
+    firstLayerHeight: 0.2,
+    wallCount: 2,
+    solidPattern: "concentric",
+  });
+  const layerPaths = concentric.preview.layers[0].paths;
+  const innermostWallX = Math.max(...layerPaths
+    .filter(({ type }) => type === "wall")
+    .map(({ points }) => Math.min(...points.map(({ x }) => x))));
+  const outermostSolidX = Math.min(...layerPaths
+    .filter(({ type }) => type === "solid-infill")
+    .map(({ points }) => Math.min(...points.map(({ x }) => x))));
+  assert.ok(Math.abs(
+    (outermostSolidX - innermostWallX) - baseConfig.lineWidth * (1 - baseConfig.infillOverlap / 100),
+  ) < 1e-6);
+});
+
 test("accepts zero walls and zero top and bottom layers", () => {
   const result = generateGcode({
     ...baseConfig,
@@ -218,6 +258,12 @@ test("validates rotary limits, nozzle clearance and bed fit", () => {
   assert.throws(() => generateGcode({ ...baseConfig, aMax: 10 }), /outside configured limits/);
   assert.throws(() => generateGcode({ ...baseConfig, tiltAngle: 40, tipDiameter: 1 }), /Layer height must be at least/);
   assert.throws(() => generateGcode({ ...baseConfig, centerX: 10 }), /falls outside the configured bed/);
+  assert.throws(() => generateGcode({
+    ...baseConfig,
+    lineWidth: 0.1,
+    layerHeight: 0.5,
+    firstLayerHeight: 0.5,
+  }), /overlap compensation/);
 });
 
 test("supports firmware retraction, optional pressure advance, purge, skirt and custom code", () => {

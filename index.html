@@ -45,8 +45,9 @@
               <label class="field"><span>Infill rotation <small>degrees</small></span><input name="infillAngle" type="number" min="0" max="180" step="1" value="45" required></label>
               <label class="field"><span>Line width <small>mm</small></span><input name="lineWidth" type="number" min="0.1" max="3" step="0.01" value="0.45" required></label>
               <label class="field"><span>Sparse infill density <small>%</small></span><input name="infillPercent" type="number" min="0" max="100" step="1" value="15" required></label>
-              <label class="field"><span>Wall overlap <small>% of line width</small></span><input name="infillOverlap" type="number" min="0" max="50" step="1" value="15" required></label>
+              <label class="field"><span>Infill-to-wall overlap <small>% of line width</small></span><input name="infillOverlap" type="number" min="0" max="50" step="1" value="15" required></label>
             </div>
+            <p class="field-hint">Wall-to-wall spacing uses Slic3r's normal flow compensation: line width − layer height × (1 − π/4). This control separately sets solid and sparse infill overlap with the innermost wall.</p>
             <fieldset class="visual-choice-group pattern-group">
               <legend>Solid infill pattern <span>For top and bottom skin layers</span></legend>
               <div class="pattern-options solid-pattern-options">
