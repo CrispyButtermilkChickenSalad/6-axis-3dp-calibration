@@ -254,6 +254,33 @@ test("preview layers expose first-layer skirt and purge, middle, and last paths"
   assert.equal(result.preview.layers[2].number, result.metrics.layers);
 });
 
+test("optional purge priming uses two overlapping minimum-length lines at 200% flow", () => {
+  const result = generateGcode({
+    ...baseConfig,
+    purgeLine: true,
+    minimumPurgeLength: 40,
+    purgeMultiplier: 200,
+    skirtEnabled: false,
+  });
+  const purgePath = result.preview.layers[0].paths.find(({ type }) => type === "purge");
+  assert.ok(purgePath);
+  assert.equal(purgePath.points.length, 4);
+  assert.equal(Math.hypot(
+    purgePath.points[1].x - purgePath.points[0].x,
+    purgePath.points[1].y - purgePath.points[0].y,
+  ), 40);
+  const expectedSpacing = baseConfig.lineWidth - baseConfig.firstLayerHeight * (1 - Math.PI / 4);
+  assert.ok(Math.abs(Math.abs(purgePath.points[2].y - purgePath.points[1].y) - expectedSpacing) < 1e-6);
+  assert.equal(result.preview.layers[0].paths.some(({ type }) => type === "skirt"), false);
+
+  const firstPurgeExtrusion = Number(result.text.match(/^G1 .* E(-?\d+(?:\.\d+)?) .*; purge$/m)[1]);
+  const beadArea = (baseConfig.lineWidth - baseConfig.firstLayerHeight) * baseConfig.firstLayerHeight
+    + Math.PI * (baseConfig.firstLayerHeight / 2) ** 2;
+  const filamentArea = Math.PI * (baseConfig.filamentDiameter / 2) ** 2;
+  const expectedExtrusion = beadArea * 2 * 40 / filamentArea;
+  assert.ok(Math.abs(firstPurgeExtrusion - expectedExtrusion) < 0.002);
+});
+
 test("validates rotary limits, nozzle clearance and bed fit", () => {
   assert.throws(() => generateGcode({ ...baseConfig, aMax: 10 }), /outside configured limits/);
   assert.throws(() => generateGcode({ ...baseConfig, tiltAngle: 40, tipDiameter: 1 }), /Layer height must be at least/);

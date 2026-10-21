@@ -13,6 +13,7 @@ let generated = null;
 
 function readConfig() {
   const config = Object.fromEntries(new FormData(form).entries());
+  config.skirtEnabled = form.elements.namedItem("skirtEnabled").checked;
   form.querySelectorAll('input[type="number"]').forEach((input) => {
     config[input.name] = input.value === "" ? null : Number(input.value);
   });

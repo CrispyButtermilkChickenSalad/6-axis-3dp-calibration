@@ -363,10 +363,15 @@ function validate(config) {
   const bedMaxY = originAtCenter ? bedDepth / 2 : bedDepth;
   const centerX = ranged(config.centerX, "Print center X", bedMinX, bedMaxX);
   const centerY = ranged(config.centerY, "Print center Y", bedMinY, bedMaxY);
-  const skirtLoops = ranged(config.skirtLoops, "Skirt loops", 0, 10);
+  const skirtEnabled = config.skirtEnabled === undefined
+    ? Number(config.skirtLoops ?? 0) > 0
+    : config.skirtEnabled === true || config.skirtEnabled === "on";
+  const skirtLoops = skirtEnabled ? ranged(config.skirtLoops, "Skirt loops", 0, 10) : 0;
   const skirtDistance = ranged(config.skirtDistance, "Skirt distance", 0, 20);
   if (!Number.isInteger(skirtLoops)) throw new Error("Skirt loops must be a whole number.");
-  const purgeLine = config.purgeLine === true || config.purgeLine === "true";
+  const purgeLine = config.purgeLine === true || config.purgeLine === "true" || config.purgeLine === "on";
+  const minimumPurgeLength = ranged(config.minimumPurgeLength ?? 30, "Minimum purge line length", 1, 1000);
+  const purgeMultiplier = ranged(config.purgeMultiplier ?? 200, "Priming extrusion multiplier", 100, 300) / 100;
   const axisLimits = {};
   for (const axis of ["a", "b", "c"]) {
     const min = finite(config[`${axis}Min`], `${axis.toUpperCase()}-axis minimum`);
@@ -382,6 +387,7 @@ function validate(config) {
     filamentDiameter, axisCount, tiltAxis, angleMode, orientationOffset: orientationOffsetValue,
     orientation: String(config.orientation), firmware: String(config.firmware),
     bedWidth, bedDepth, centerX, centerY, skirtLoops, skirtDistance, purgeLine,
+    minimumPurgeLength, purgeMultiplier,
     rotaryCMode: String(config.rotaryCMode) === "bed" ? "bed" : "tool",
     bedShape, bedMinX, bedMaxX, bedMinY, bedMaxY, originAtCenter,
     firstLayerFan: ranged(config.firstLayerFan, "First layer fan", 0, 100),
@@ -420,16 +426,20 @@ function validate(config) {
     const valuesAtRest = axisValues(values, 0);
     checkAxisLimits(values, valuesAtRest);
   }
-  const skirtMargin = skirtLoops > 0 ? skirtDistance + (skirtLoops - 1) * lineWidth + lineWidth / 2 : 0;
+  const skirtSpacing = pathSpacing(lineWidth, firstLayerHeight);
+  const skirtMargin = skirtLoops > 0 ? skirtDistance + (skirtLoops - 1) * skirtSpacing + lineWidth / 2 : 0;
   const radiusX = width / 2 + skirtMargin;
   const radiusY = depth / 2 + skirtMargin;
-  const purgeLength = Math.max(30, width);
+  const purgeLength = Math.max(minimumPurgeLength, width);
+  const purgeStartY = -depth / 2 - lineWidth - 2;
+  const purgeSpacing = pathSpacing(lineWidth, firstLayerHeight);
   const purgeMinX = purgeLine ? -width / 2 - lineWidth / 2 : 0;
   const purgeMaxX = purgeLine ? -width / 2 + purgeLength + lineWidth / 2 : 0;
-  const purgeY = purgeLine ? -depth / 2 - lineWidth - 2 - lineWidth / 2 : 0;
+  const purgeMinY = purgeLine ? purgeStartY - lineWidth / 2 : 0;
+  const purgeMaxY = purgeLine ? purgeStartY + purgeSpacing + lineWidth / 2 : 0;
   const offsetMinX = Math.min(-radiusX, purgeMinX);
   const offsetMaxX = Math.max(radiusX, purgeMaxX);
-  const offsetMinY = Math.min(-radiusY, purgeY);
+  const offsetMinY = Math.min(-radiusY, purgeMinY);
   const offsetMaxY = radiusY;
   if (bedShape === "rectangular") {
     if (centerX + offsetMinX < bedMinX - EPSILON || centerX + offsetMaxX > bedMaxX + EPSILON
@@ -476,11 +486,17 @@ function makeLayerPaths(config, layerIndex, z, totalLayers) {
   if (layerIndex === 0 && config.purgeLine) {
     const x = -config.width / 2;
     const y = -config.depth / 2 - config.lineWidth - 2;
-    paths.push({ type: "purge", points: [point(x, y), point(x + Math.max(30, config.width), y)] });
+    const secondY = y + pathSpacing(config.lineWidth, layerHeight);
+    const purgeLength = Math.max(config.minimumPurgeLength, config.width);
+    const passes = [
+      [point(x, y), point(x + purgeLength, y)],
+      [point(x, secondY), point(x + purgeLength, secondY)],
+    ];
+    paths.push({ type: "purge", points: connectScanlines(passes)[0] });
   }
   if (layerIndex === 0) {
     for (let loop = config.skirtLoops - 1; loop >= 0; loop -= 1) {
-      const inset = -(config.skirtDistance + loop * config.lineWidth);
+      const inset = -(config.skirtDistance + loop * wallSpacing);
       const outline = isCylinder
         ? circlePath(outerRadius - inset)
         : rectanglePath(config.width - inset * 2, config.depth - inset * 2, 0);
@@ -550,6 +566,7 @@ export function generateGcode(input) {
     "; Primitive tilting-nozzle test specimen",
     `; Shape: ${config.shape}; dimensions: ${format(config.width)} x ${format(config.depth)} x ${format(config.height)} mm`,
     `; Walls: ${config.wallCount}; sparse infill: ${config.sparsePattern} at ${format(config.infillPercent, 0)}%; solid infill: ${config.solidPattern}; top/bottom layers: ${config.topLayers}/${config.bottomLayers}; infill-to-wall overlap: ${format(config.infillOverlap, 0)}%`,
+    `; Priming: purge lines ${config.purgeLine ? "on" : "off"} (${format(config.minimumPurgeLength, 0)} mm minimum each); skirt loops ${config.skirtLoops}; extrusion multiplier ${format(config.purgeMultiplier * 100, 0)}%`,
     `; Infill base angle: ${format(config.infillAngle, 1)} degrees`,
     `; Tilt: ${format(config.tiltAngle, 1)} degrees; orientation: ${config.orientation}; angle mode: ${config.angleMode}`,
     `; Nozzle tip: ${format(config.tipDiameter, 2)} mm; hole: ${format(config.holeDiameter, 2)} mm; layer height: ${format(config.layerHeight, 3)} mm; extrusion multiplier: ${format(config.extrusionMultiplier * 100, 1)}%`,
@@ -617,7 +634,10 @@ export function generateGcode(input) {
         const next = points[pointIndex];
         const length = Math.hypot(next.x - previous.x, next.y - previous.y);
         if (length <= EPSILON) continue;
-        const deltaE = extrusionArea(layerHeights[layerIndex], config.lineWidth) * config.extrusionMultiplier / filamentArea * length;
+        const multiplier = path.type === "purge" || path.type === "skirt"
+          ? config.purgeMultiplier
+          : config.extrusionMultiplier;
+        const deltaE = extrusionArea(layerHeights[layerIndex], config.lineWidth) * multiplier / filamentArea * length;
         extrusion += deltaE;
         filamentLength += deltaE;
         const speed = layerIndex === 0 ? config.firstLayerSpeed : config.printSpeed;
