@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f5f2f8">
+    <title>Tilting nozzle · primitive generator</title>
+    <link rel="stylesheet" href="./styles.css">
+    <script type="module" src="./src/app.mjs"></script>
+  </head>
+  <body>
+    <main class="shell">
+      <section class="intro">
+        <div class="intro-topline"><div class="eyebrow">6-AXIS PRINTING · TEST SPECIMENS</div><button class="theme-toggle" type="button" id="theme-toggle" aria-pressed="false"><span aria-hidden="true">◐</span> Dark mode</button></div>
+        <h1>Primitive shape<br><span>generator.</span></h1>
+        <p>Slice a cube, cuboid or cylinder into walls, solid top and bottom skins, and configurable sparse infill. Preview the toolpath and export a G-code starting point for your tilting-nozzle machine.</p>
+        <div class="intro-meta"><span>01 / SHAPE + PROCESS</span><span>02 / PREVIEW + EXPORT</span></div>
+      </section>
+
+      <div class="workspace">
+        <section class="panel settings-panel" aria-labelledby="settings-title">
+          <div class="panel-heading">
+            <div><div class="eyebrow">01 / DEFINE SPECIMEN</div><h2 id="settings-title">Print setup</h2></div>
+            <span class="panel-index">CONFIG</span>
+          </div>
+          <form id="generator-form">
+            <fieldset class="shape-selector">
+              <legend>Primitive</legend>
+              <label class="shape-option"><input type="radio" name="shape" value="cube"><span class="shape-icon cube-icon"></span><span>Cube</span></label>
+              <label class="shape-option"><input type="radio" name="shape" value="cuboid" checked><span class="shape-icon cuboid-icon"></span><span>Cuboid</span></label>
+              <label class="shape-option"><input type="radio" name="shape" value="cylinder"><span class="shape-icon cylinder-icon"></span><span>Cylinder</span></label>
+            </fieldset>
+
+            <div class="section-label"><span>GEOMETRY</span><span class="rule"></span></div>
+            <div class="field-grid">
+              <label class="field" data-shape-field="width"><span>Width X <small>mm</small></span><input name="width" type="number" min="2" max="200" step="0.1" value="24" required></label>
+              <label class="field" data-shape-field="depth"><span>Depth Y <small>mm</small></span><input name="depth" type="number" min="2" max="200" step="0.1" value="24" required></label>
+              <label class="field" data-shape-field="diameter" hidden><span>Diameter <small>mm</small></span><input name="diameter" type="number" min="2" max="200" step="0.1" value="24" required></label>
+              <label class="field"><span>Height Z <small>mm</small></span><input name="height" type="number" min="0.2" max="200" step="0.1" value="20" required></label>
+            </div>
+
+            <div class="section-label"><span>WALLS + INFILL</span><span class="rule"></span></div>
+            <div class="field-grid">
+              <label class="field"><span>Wall count</span><input name="wallCount" type="number" min="0" max="10" step="1" value="2" required></label>
+              <label class="field"><span>Infill rotation <small>degrees</small></span><input name="infillAngle" type="number" min="0" max="180" step="1" value="45" required></label>
+              <label class="field"><span>Line width <small>mm</small></span><input name="lineWidth" type="number" min="0.1" max="3" step="0.01" value="0.45" required></label>
+              <label class="field"><span>Sparse infill density <small>%</small></span><input name="infillPercent" type="number" min="0" max="100" step="1" value="15" required></label>
+              <label class="field"><span>Wall overlap <small>% of line width</small></span><input name="infillOverlap" type="number" min="0" max="50" step="1" value="15" required></label>
+            </div>
+            <fieldset class="visual-choice-group pattern-group">
+              <legend>Solid infill pattern <span>For top and bottom skin layers</span></legend>
+              <div class="pattern-options solid-pattern-options">
+                <label class="pattern-option"><input type="radio" name="solidPattern" value="monotonic" checked><span class="pattern-art" aria-hidden="true"><svg viewBox="0 0 120 60"><path d="M16 10H100L94 18H16L10 26H100L94 34H16L10 42H100L94 50H16"/><path class="pattern-arrow" d="m86 7 5 3-5 3m-58 2-5 3 5 3m58 2 5 3-5 3m-58 2-5 3 5 3"/></svg></span><span class="pattern-name">Monotonic</span><span class="orientation-note">Connected serpentine solid-fill passes; bead direction alternates between rows.</span></label>
+                <label class="pattern-option"><input type="radio" name="solidPattern" value="concentric"><span class="pattern-art" aria-hidden="true"><svg viewBox="0 0 100 54"><path d="M15 8h70v38H15zM22 14h56v26H22zM29 20h42v14H29zM36 25h28v4H36z"/></svg></span><span class="pattern-name">Concentric</span><span class="orientation-note">Nested outlines follow the specimen perimeter.</span></label>
+              </div>
+            </fieldset>
+            <fieldset class="visual-choice-group pattern-group">
+              <legend>Sparse infill pattern <span>Repeatable planar patterns plus two 3D-inspired choices</span></legend>
+              <div class="pattern-options sparse-pattern-options">
+                <label class="pattern-option"><input type="radio" name="sparsePattern" value="rectilinear" checked><span class="pattern-art" aria-hidden="true"><svg viewBox="0 0 100 54"><path d="M12 14H88M88 27H12M12 40H88"/><path class="pattern-arrow" d="m75 11 5 3-5 3m-53 7-5 3 5 3m53 10 5 3-5 3"/></svg></span><span class="pattern-name">Rectilinear</span><span class="orientation-note">One parallel direction per layer; direction alternates on the next layer.</span></label>
+                <label class="pattern-option"><input type="radio" name="sparsePattern" value="grid"><span class="pattern-art" aria-hidden="true"><svg viewBox="0 0 100 54"><path d="M20 8V46M40 8V46M60 8V46M80 8V46M10 14H90M10 34H90"/></svg></span><span class="pattern-name">Grid</span><span class="orientation-note">Two perpendicular line directions overlap on each layer.</span></label>
+                <label class="pattern-option"><input type="radio" name="sparsePattern" value="triangles"><span class="pattern-art" aria-hidden="true"><svg viewBox="0 0 100 54"><path d="M10 45 30 10 50 45zM50 45 70 10 90 45zM20 27h60M20 10l40 35M60 10 90 35M10 35 30 10"/></svg></span><span class="pattern-name">Triangles</span><span class="orientation-note">Three line directions form repeated triangular cells.</span></label>
+                <label class="pattern-option"><input type="radio" name="sparsePattern" value="honeycomb"><span class="pattern-art" aria-hidden="true"><svg viewBox="0 0 100 54"><path d="m10 18 8-5 8 5v9l-8 5-8-5zM26 18l8-5 8 5v9l-8 5-8-5zM42 18l8-5 8 5v9l-8 5-8-5zM58 18l8-5 8 5v9l-8 5-8-5zM74 18l8-5 8 5v9l-8 5-8-5zM18 32l8-5 8 5v9l-8 5-8-5zM34 32l8-5 8 5v9l-8 5-8-5zM50 32l8-5 8 5v9l-8 5-8-5zM66 32l8-5 8 5v9l-8 5-8-5z"/></svg></span><span class="pattern-name">Honeycomb</span><span class="orientation-note">Simple hexagonal cells clipped to the specimen.</span></label>
+                <label class="pattern-option"><input type="radio" name="sparsePattern" value="cubic"><span class="pattern-art" aria-hidden="true"><svg viewBox="0 0 100 54"><path d="m27 9 25 14 24-14m-49 0v27l25 14V23m24-14v27L52 50m-25-14 25-13 24 13M39 16v28m25-35v28M15 16l74 27M15 42 89 15"/></svg></span><span class="pattern-name">Cubic · 3D</span><span class="orientation-note">Crossed layer directions suggest a 3D lattice; this is a planar approximation.</span></label>
+                <label class="pattern-option"><input type="radio" name="sparsePattern" value="gyroid"><span class="pattern-art" aria-hidden="true"><svg viewBox="0 0 100 54"><path d="M8 14c8 0 8 26 17 26s9-26 17-26 9 26 17 26 9-26 17-26 9 26 17 26M8 27c8 0 8-20 17-20s9 20 17 20 9-20 17-20 9 20 17 20 9-20 17-20M8 40c8 0 8-26 17-26s9 26 17 26 9-26 17-26 9 26 17 26 9-26 17-26"/></svg></span><span class="pattern-name">Gyroid · 3D</span><span class="orientation-note">Offset wavy paths hint at a gyroid; this simplified preview is not a true 3D lattice.</span></label>
+              </div>
+            </fieldset>
+            <div class="section-label"><span>TOP + BOTTOM SKINS</span><span class="rule"></span></div>
+            <div class="field-grid">
+              <label class="field"><span>Bottom layers <small>layers</small></span><input name="bottomLayers" type="number" min="0" max="50" step="1" value="3" required></label>
+              <label class="field"><span>Bottom thickness <small>mm</small></span><input name="bottomThickness" type="number" min="0" max="100" step="0.01" value="0.6" required></label>
+              <label class="field"><span>Top layers <small>layers</small></span><input name="topLayers" type="number" min="0" max="50" step="1" value="3" required></label>
+              <label class="field"><span>Top thickness <small>mm</small></span><input name="topThickness" type="number" min="0" max="100" step="0.01" value="0.6" required></label>
+            </div>
+            <p class="field-hint">Layer counts and thickness are linked using the regular layer height; entered thickness rounds to the nearest whole layer. Set wall count and both skin layer counts to 0 for a sparse-only specimen.</p>
+
+            <div class="section-label"><span>NOZZLE + LAYER</span><span class="rule"></span></div>
+            <div class="field-grid">
+              <label class="field"><span>Tilt angle <small>degrees</small></span><input name="tiltAngle" type="number" min="-89" max="89" step="0.5" value="25" required></label>
+              <label class="field"><span>Nozzle tip diameter <small>mm</small></span><input name="tipDiameter" type="number" min="0.05" max="10" step="0.01" value="0.8" required></label>
+              <label class="field"><span>Nozzle hole diameter <small>mm</small></span><input name="holeDiameter" type="number" min="0.05" max="5" step="0.01" value="0.4" required></label>
+              <label class="field"><span>Layer height <small>mm</small></span><input name="layerHeight" type="number" min="0.01" max="2" step="0.01" value="0.2" required></label>
+              <label class="field"><span>First layer height <small>mm</small></span><input name="firstLayerHeight" type="number" min="0.01" max="2" step="0.01" value="0.24" required></label>
+              <label class="field"><span>Extrusion multiplier <small>%</small></span><input name="extrusionMultiplier" type="number" min="1" max="300" step="1" value="100" required></label>
+              <label class="field"><span>Filament diameter <small>mm</small></span><input name="filamentDiameter" type="number" min="1" max="4" step="0.01" value="1.75" required></label>
+            </div>
+            <p class="field-hint" id="clearance-hint">Minimum layer height is checked against the angled physical nozzle tip.</p>
+            <fieldset class="visual-choice-group">
+              <legend>Nozzle orientation <span>Orientation relative to the extrusion path</span></legend>
+              <div class="orientation-options">
+                <label class="orientation-option"><input type="radio" name="orientation" value="trailing" checked><span class="orientation-illustration" aria-hidden="true"><svg viewBox="0 0 104 54"><path class="bead" d="M12 40H92"/><path class="path-line" d="M16 44H88"/><path class="direction-arrow" d="M68 44h18m-6-5 6 5-6 5"/><path class="nozzle-shape" d="M39 7h17l-7 28H43z"/><circle class="nozzle-tip" cx="43" cy="36" r="2.7"/><path class="tilt-arrow" d="m48 26 9-11m-6 1 6-1-1 6"/></svg></span><span class="orientation-name">Trailing edge</span><span class="orientation-note">Leans away from deposited bead</span></label>
+                <label class="orientation-option"><input type="radio" name="orientation" value="leading"><span class="orientation-illustration" aria-hidden="true"><svg viewBox="0 0 104 54"><path class="bead" d="M12 40H92"/><path class="path-line" d="M16 44H88"/><path class="direction-arrow" d="M68 44h18m-6-5 6 5-6 5"/><path class="nozzle-shape" d="M39 7h17l-3 28H39z"/><circle class="nozzle-tip" cx="47" cy="36" r="2.7"/><path class="tilt-arrow" d="m47 26-9-11m6 1-6-1 1 6"/></svg></span><span class="orientation-name">Leading edge</span><span class="orientation-note">Leans toward deposited bead</span></label>
+                <label class="orientation-option"><input type="radio" name="orientation" value="adjacent"><span class="orientation-illustration" aria-hidden="true"><svg viewBox="0 0 104 54"><path class="bead" d="M12 40H92"/><path class="path-line" d="M16 44H88"/><path class="direction-arrow" d="M68 44h18m-6-5 6 5-6 5"/><path class="nozzle-shape" d="M51 7h17L50 35H37z"/><circle class="nozzle-tip" cx="37" cy="36" r="2.7"/><path class="tilt-arrow" d="M49 28V12m-4 6 4-6 4 6"/></svg></span><span class="orientation-name">Adjacent</span><span class="orientation-note">Leans across the bead path</span></label>
+                <label class="orientation-option"><input type="radio" name="orientation" value="hybrid-trailing"><span class="orientation-illustration" aria-hidden="true"><svg viewBox="0 0 104 54"><path class="bead" d="M12 40H92"/><path class="path-line" d="M16 44H88"/><path class="direction-arrow" d="M68 44h18m-6-5 6 5-6 5"/><path class="nozzle-shape" d="M46 7h17L49 35H36z"/><circle class="nozzle-tip" cx="36" cy="36" r="2.7"/><path class="tilt-arrow" d="m47 27 1-15m-4 6 4-6 3 6"/></svg></span><span class="orientation-name">Hybrid · trailing</span><span class="orientation-note">Halfway to adjacent</span></label>
+                <label class="orientation-option"><input type="radio" name="orientation" value="hybrid-leading"><span class="orientation-illustration" aria-hidden="true"><svg viewBox="0 0 104 54"><path class="bead" d="M12 40H92"/><path class="path-line" d="M16 44H88"/><path class="direction-arrow" d="M68 44h18m-6-5 6 5-6 5"/><path class="nozzle-shape" d="m43 7 17 0-8 28H38z"/><circle class="nozzle-tip" cx="44" cy="36" r="2.7"/><path class="tilt-arrow" d="m48 27-7-13m5 2-5-2v6"/></svg></span><span class="orientation-name">Hybrid · leading</span><span class="orientation-note">Halfway to adjacent</span></label>
+              </div>
+            </fieldset>
+
+            <fieldset class="visual-choice-group angle-mode-group">
+              <legend>Angle mode <span>How the tilt responds to each extrusion move</span></legend>
+              <div class="angle-mode-options">
+                <label class="angle-mode-option"><input type="radio" name="angleMode" value="absolute" checked><span class="angle-mode-art" aria-hidden="true"><svg viewBox="0 0 200 100"><text x="8" y="12">FIXED IN MACHINE FRAME</text><path class="mode-bead" d="M12 42H84M105 85 178 12"/><path class="mode-path" d="M12 42H75M105 85 166 24"/><path class="mode-arrow" d="m68 38 7 4-7 4m86-26 7 1-1 7"/><g class="mode-nozzle" transform="translate(35 42)"><path d="M8-34h14L12-6H-4z"/></g><g class="mode-nozzle" transform="translate(127 63)"><path d="M8-34h14L12-6H-4z"/></g><circle class="mode-tip-dot" cx="35" cy="42" r="2.5"/><circle class="mode-tip-dot" cx="127" cy="63" r="2.5"/><text x="12" y="98">SAME MACHINE ANGLE</text><text x="128" y="98">TURNED PATH</text></svg></span><span class="angle-name">Absolute angle</span><span class="orientation-note">The machine-frame tilt stays fixed even when the bead path turns.</span></label>
+                <label class="angle-mode-option"><input type="radio" name="angleMode" value="adaptive"><span class="angle-mode-art" aria-hidden="true"><svg viewBox="0 0 200 100"><text x="8" y="12">TILT FOLLOWS THE BEAD</text><path class="mode-bead" d="M12 42H84M105 85 178 12"/><path class="mode-path" d="M12 42H75M105 85 166 24"/><path class="mode-arrow" d="m68 38 7 4-7 4m86-26 7 1-1 7"/><g class="mode-nozzle" transform="translate(35 42)"><path d="M8-34h14L12-6H-4z"/></g><g class="mode-nozzle" transform="translate(127 63) rotate(-45)"><path d="M8-34h14L12-6H-4z"/></g><circle class="mode-tip-dot" cx="35" cy="42" r="2.5"/><circle class="mode-tip-dot" cx="127" cy="63" r="2.5"/><path class="adaptive-link" d="M48 25 60 16m66 36 14-2"/><text x="12" y="98">PATH X · TILT X</text><text x="126" y="98">PATH Y · TILT Y</text></svg></span><span class="angle-name">Adaptive angle</span><span class="orientation-note">The tilt re-aims with each path direction. Requires a 5-axis machine or more.</span></label>
+              </div>
+            </fieldset>
+
+            <details class="advanced">
+              <summary><span>Advanced machine + print settings</span><span class="summary-note">MOTION / START G-CODE / PA</span></summary>
+              <div class="section-label"><span>MACHINE + BED</span><span class="rule"></span></div>
+              <div class="field-grid">
+                <label class="field"><span>Firmware</span><select name="firmware"><option value="generic">Generic / Marlin-style</option><option value="marlin">Marlin</option><option value="klipper">Klipper</option><option value="reprap">RepRapFirmware</option></select></label>
+                <label class="field"><span>Machine axes</span><select name="axisCount"><option value="3">3-axis</option><option value="4" selected>4-axis</option><option value="5">5-axis</option><option value="6">6-axis</option></select></label>
+                <label class="field"><span>Tilt rotary axis</span><select name="tiltAxis"><option value="A">A · about X</option><option value="B">B · about Y</option></select></label>
+                <label class="field"><span>Rotary C mode</span><select name="rotaryCMode"><option value="tool">Tool rotation</option><option value="bed">Bed rotation</option></select></label>
+                <label class="field"><span>Klipper extruder name <small>optional</small></span><input name="extruderName" type="text" maxlength="64" placeholder="extruder"></label>
+                <label class="field"><span>Bed shape</span><select name="bedShape"><option value="rectangular">Rectangular</option><option value="circular">Circular</option></select></label>
+                <label class="field"><span>Bed width X <small>mm</small></span><input name="bedWidth" type="number" min="50" max="2000" step="1" value="220" required></label>
+                <label class="field"><span>Bed depth Y <small>mm</small></span><input name="bedDepth" type="number" min="50" max="2000" step="1" value="220" required></label>
+                <label class="field"><span>Print center X <small>mm</small></span><input name="centerX" type="number" min="0" max="2000" step="0.1" value="110" required></label>
+                <label class="field"><span>Print center Y <small>mm</small></span><input name="centerY" type="number" min="0" max="2000" step="0.1" value="110" required></label>
+                <label class="check-field"><input name="originAtCenter" type="checkbox"><span>Bed origin is at center</span></label>
+                <label class="field"><span>A-axis limits <small>min / max °</small></span><div class="inline-inputs"><input name="aMin" aria-label="A-axis minimum" type="number" step="1" value="-90"><input name="aMax" aria-label="A-axis maximum" type="number" step="1" value="90"></div></label>
+                <label class="field"><span>B-axis limits <small>min / max °</small></span><div class="inline-inputs"><input name="bMin" aria-label="B-axis minimum" type="number" step="1" value="-90"><input name="bMax" aria-label="B-axis maximum" type="number" step="1" value="90"></div></label>
+                <label class="field" id="c-axis-limits"><span>C-axis tool limits <small>min / max °</small></span><div class="inline-inputs"><input name="cMin" aria-label="C-axis minimum" type="number" step="1" value="-180"><input name="cMax" aria-label="C-axis maximum" type="number" step="1" value="180"></div></label>
+              </div>
+              <p class="field-hint" id="c-axis-hint">In 6-axis adaptive tool-rotation mode, C follows the bead heading and is kept within these physical limits. Unsupported headings are rejected; limits are never bypassed. Bed rotation wraps C to ±180° and ignores tool-axis limits.</p>
+
+              <div class="section-label"><span>PRINT + MATERIAL</span><span class="rule"></span></div>
+              <div class="field-grid">
+                <label class="field"><span>Print speed <small>mm/s</small></span><input name="printSpeed" type="number" min="1" max="500" step="1" value="35"></label>
+                <label class="field"><span>First layer speed <small>mm/s</small></span><input name="firstLayerSpeed" type="number" min="1" max="200" step="1" value="20"></label>
+                <label class="field"><span>Hotend temperature <small>°C</small></span><input name="hotendTemp" type="number" min="0" max="350" step="1" value="210"></label>
+                <label class="field"><span>Bed temperature <small>°C</small></span><input name="bedTemp" type="number" min="0" max="150" step="1" value="60"></label>
+                <label class="field"><span>Fan speed <small>%</small></span><input name="fanSpeed" type="number" min="0" max="100" step="1" value="100"></label>
+                <label class="field"><span>First layer fan <small>%</small></span><input name="firstLayerFan" type="number" min="0" max="100" step="1" value="0"></label>
+                <label class="field"><span>Acceleration <small>mm/s²</small></span><input name="acceleration" type="number" min="0" max="50000" step="10" value="1500"></label>
+                <label class="field"><span>Retraction distance <small>mm</small></span><input name="retractDistance" type="number" min="0" max="20" step="0.1" value="0.8"></label>
+                <label class="field"><span>Retraction minimum travel <small>mm</small></span><input name="retractThreshold" type="number" min="0" max="50" step="0.1" value="1.5"></label>
+                <label class="field"><span>Retraction speed <small>mm/s</small></span><input name="retractSpeed" type="number" min="1" max="100" step="1" value="35"></label>
+                <label class="field"><span>Unretraction speed <small>mm/s</small></span><input name="unretractSpeed" type="number" min="1" max="100" step="1" value="35"></label>
+                <label class="field"><span>Extra restart <small>mm</small></span><input name="extraRestart" type="number" min="-5" max="5" step="0.01" value="0"></label>
+                <label class="field"><span>Z-hop <small>mm</small></span><input name="zHop" type="number" min="0" max="20" step="0.1" value="0.2"></label>
+                <label class="check-field"><input name="firmwareRetraction" type="checkbox"><span>Use firmware retraction (G10/G11)</span></label>
+                <label class="check-field"><input name="usePressureAdvance" type="checkbox" checked><span>Enable pressure advance override</span></label>
+                <label class="field"><span>Pressure advance <small>K / ratio</small></span><input name="pressureAdvance" type="number" min="0" max="10" step="0.001" value="0.04"></label>
+                <label class="field"><span>Skirt loops</span><input name="skirtLoops" type="number" min="0" max="10" step="1" value="1"></label>
+                <label class="field"><span>Skirt distance <small>mm</small></span><input name="skirtDistance" type="number" min="0" max="20" step="0.5" value="4"></label>
+                <label class="field"><span>Purge line</span><select name="purgeLine"><option value="false">Off</option><option value="true">On</option></select></label>
+                <label class="field"><span>Tool index</span><input name="toolIndex" type="number" min="0" max="15" step="1" value="0"></label>
+                <label class="check-field"><input name="homeAxes" type="checkbox" checked><span>Home axes at start</span></label>
+                <label class="check-field"><input name="heatBed" type="checkbox" checked><span>Heat and wait for bed</span></label>
+                <label class="check-field"><input name="heatHotend" type="checkbox" checked><span>Heat and wait for hotend</span></label>
+              </div>
+              <div class="field-grid single-column">
+                <label class="field textarea-field"><span>Start G-code <small>optional, replaces generated startup</small></span><textarea name="startGcode" rows="3" placeholder="G28&#10;M104 S[HOTEND_TEMP]&#10;M140 S[BED_TEMP]"></textarea></label>
+                <label class="field textarea-field"><span>End G-code <small>optional, replaces generated shutdown</small></span><textarea name="endGcode" rows="3" placeholder="M104 S0&#10;M140 S0&#10;M84"></textarea></label>
+              </div>
+              <p class="field-hint">Adaptive tilt requires 5+ axes. On a 6-axis adaptive tool rotation, C follows the bead heading and uses the nearest angle inside the configured physical limits; headings with no valid equivalent are rejected. Bed rotation wraps C and skips tool-axis limits. Neither mode solves machine-specific inverse kinematics or moving-bed XY compensation.</p>
+            </details>
+
+            <div class="form-error" id="form-error" role="alert" hidden></div>
+          </form>
+        </section>
+
+        <section class="panel preview-panel" aria-labelledby="preview-title">
+          <div class="panel-heading preview-heading">
+            <div><div class="eyebrow">02 / INSPECT TOOLPATH</div><h2 id="preview-title">3D preview</h2></div>
+            <span class="ready-badge" id="status-badge"><span class="status-dot"></span> NOT GENERATED</span>
+          </div>
+          <button class="primary-button generate-button" type="submit" form="generator-form"><span>Generate toolpath</span><span aria-hidden="true">↗</span></button>
+          <div class="preview-layer-select">
+            <label for="preview-layer-slider"><span>PREVIEW LAYER</span><strong id="preview-layer-label">Generate a toolpath to inspect layers</strong></label>
+            <input id="preview-layer-slider" type="range" min="0" max="2" step="1" value="2" disabled aria-label="Choose first, middle, or last layer">
+            <div class="preview-layer-labels" aria-hidden="true"><span>FIRST</span><span>MIDDLE</span><span>LAST</span></div>
+          </div>
+          <div class="preview-wrap">
+            <canvas id="preview-scene" tabindex="0" aria-label="Interactive 3D preview of the generated toolpath; left-drag moves the nozzle, right-drag orbits"></canvas>
+            <div class="preview-hint">Left-drag to move the nozzle. Right-click and drag to orbit. First-layer preview includes purge and skirt paths. Scroll to zoom.</div>
+            <div class="preview-controls"><span>LEFT DRAG · NOZZLE</span><span>RIGHT DRAG · ORBIT</span><button type="button" id="reset-view">RESET VIEW</button></div>
+          </div>
+          <div class="preview-stats">
+            <div><span>SPECIMEN</span><strong id="stat-shape">—</strong></div>
+            <div><span>LAYERS</span><strong id="stat-layers">—</strong></div>
+            <div><span>TOOLPATH</span><strong id="stat-paths">—</strong></div>
+            <div><span>EST. FILAMENT</span><strong id="stat-filament">—</strong></div>
+          </div>
+          <div class="preview-note"><span class="note-mark">!</span><p>G-code is a machine-specific starting point, not a universal slicer output. Check axis directions, rotary travel and cable clearance, firmware commands, bed limits, nozzle clearance and motion kinematics before printing.</p></div>
+          <div class="output-heading"><div><div class="eyebrow">GENERATED FILE</div><strong id="output-name">primitive-test.gcode</strong></div><button type="button" class="download-button" id="download-button" disabled>Download G-code <span>↓</span></button></div>
+          <details class="code-details"><summary>Review generated G-code <span id="code-line-count">0 lines</span></summary><pre id="preview-code">Generate a toolpath to inspect its G-code.</pre></details>
+        </section>
+      </div>
+    </main>
+  </body>
+</html>
