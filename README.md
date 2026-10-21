@@ -2,6 +2,10 @@
 
 Testing g-code generation for up to 6-axis capable motion platforms for 3D printing.
 
+## Try it online
+
+Use the [Primitive G-code Generator](https://crispybuttermilkchickensalad.github.io/6-axis-3dp-calibration/) hosted with GitHub Pages.
+
 ## Primitive G-code generator
 
 A static browser tool for generating simple cube, cuboid and cylinder test prints with configurable perimeters, solid skins, sparse infill and nozzle tilt. It carries forward the nozzle angle calibration setup: nozzle-tip collision clearance, tip and hole diameters, layer height, extrusion multiplier, bead-relative orientation choices, machine rotary axes and limits, bed placement, temperatures, motion speeds, retraction distance/threshold/speeds, Z-hop, pressure advance, purge/skirt and custom start/end G-code.
