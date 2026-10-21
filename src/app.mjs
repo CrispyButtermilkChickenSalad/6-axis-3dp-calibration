@@ -4,6 +4,8 @@ import { createScenePreview } from "./preview.mjs";
 const form = document.querySelector("#generator-form");
 const errorBox = document.querySelector("#form-error");
 const downloadButton = document.querySelector("#download-button");
+const outputFilename = document.querySelector("#output-filename");
+const outputFilenameHint = document.querySelector("#output-filename-hint");
 const codePreview = document.querySelector("#preview-code");
 const statusBadge = document.querySelector("#status-badge");
 const preview = createScenePreview(document.querySelector("#preview-scene"));
@@ -24,6 +26,15 @@ function readConfig() {
 
 function selectedShape() {
   return form.elements.namedItem("shape").value;
+}
+
+function validateOutputFilename() {
+  const valid = /^[A-Za-z0-9](?:[A-Za-z0-9 _.-]*[A-Za-z0-9_-])?$/.test(outputFilename.value);
+  outputFilename.setCustomValidity(valid ? "" : "Use letters, numbers, spaces, dots, underscores, and hyphens; do not end with a dot or space.");
+  outputFilenameHint.textContent = valid
+    ? "Choose a file name without the .gcode extension."
+    : "Use letters, numbers, spaces, dots, underscores, and hyphens; do not end with a dot or space.";
+  return valid;
 }
 
 function updateShapeFields() {
@@ -210,15 +221,20 @@ pathColorToggle.addEventListener("change", () => {
 
 downloadButton.addEventListener("click", () => {
   if (!generated) return;
+  validateOutputFilename();
+  if (!outputFilename.reportValidity()) return;
   const blob = new Blob([generated.text], { type: "text/plain;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `${selectedShape()}-tilt-test.gcode`;
+  link.download = `${outputFilename.value.trim()}.gcode`;
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 0);
 });
 
+outputFilename.addEventListener("input", validateOutputFilename);
+
 updateShapeFields();
 updateBedControls();
 updateClearanceHint();
+validateOutputFilename();

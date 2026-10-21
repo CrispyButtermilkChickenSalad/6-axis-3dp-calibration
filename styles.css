@@ -178,7 +178,10 @@ h1 span { color: var(--green); }
 .note-mark { display: grid; flex: 0 0 15px; place-items: center; width: 15px; height: 15px; margin-top: 1px; border: 1px solid #c89a51; border-radius: 50%; color: #a76c32; font: 10px var(--mono); }
 .preview-note p { margin: 0; color: #7b735f; font-size: 10px; line-height: 1.6; }
 .output-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 16px; border-top: 1px solid var(--line); }
-.output-heading strong { display: block; margin-top: 6px; font: 11px var(--mono); color: #455148; }
+.filename-editor { display: flex; align-items: center; gap: 4px; margin-top: 6px; color: #455148; font: 11px var(--mono); }
+.filename-editor input { width: min(220px, 48vw); min-height: 30px; padding: 5px 7px; border: 1px solid var(--line); border-radius: 5px; outline: none; background: #fcfbfd; color: var(--ink); font: 11px var(--mono); }
+.filename-editor input:focus { border-color: #a48bbb; box-shadow: 0 0 0 3px rgba(115, 80, 151, .13); }
+.filename-hint { display: block; margin-top: 4px; color: #929b93; font-size: 9px; }
 .download-button { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid #cadae0; border-radius: 6px; background: white; color: var(--green-dark); cursor: pointer; font-size: 10px; font-weight: 600; }
 .download-button:hover:not(:disabled) { border-color: #80a78a; background: #f4f8f4; }
 .download-button:disabled { cursor: not-allowed; opacity: .45; }
@@ -244,7 +247,7 @@ body[data-theme="dark"] .advanced summary,
 body[data-theme="dark"] .orientation-name,
 body[data-theme="dark"] .angle-name,
 body[data-theme="dark"] .pattern-name,
-body[data-theme="dark"] .output-heading strong,
+body[data-theme="dark"] .filename-editor,
 body[data-theme="dark"] .preview-layer-select strong,
 body[data-theme="dark"] .preview-stats strong { color: #ddd3e5; }
 body[data-theme="dark"] .eyebrow,
@@ -260,6 +263,7 @@ body[data-theme="dark"] .panel { box-shadow: 0 2px 12px rgba(0,0,0,.16); }
 body[data-theme="dark"] .field input,
 body[data-theme="dark"] .field select,
 body[data-theme="dark"] .field textarea,
+body[data-theme="dark"] .filename-editor input,
 body[data-theme="dark"] .download-button { background: #201b27; color: #eee8f3; border-color: #494052; }
 body[data-theme="dark"] .shape-option,
 body[data-theme="dark"] .orientation-option,
