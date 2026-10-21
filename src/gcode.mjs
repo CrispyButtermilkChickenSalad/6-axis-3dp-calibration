@@ -346,7 +346,6 @@ function gyroidInfill(config, inset, angleDegrees, density, workBudget, z) {
 }
 
 function sparseInfill(config, inset, angleDegrees, spacing, layerIndex, workBudget, z) {
-  const phase = (fraction) => spacing * fraction;
   const rectangular = (angle, lineSpacing = spacing) => rectangleInfill(
     config.width, config.depth, inset, angle, lineSpacing, false,
   ).map((points) => ({ type: "sparse-infill", points }));
@@ -372,10 +371,9 @@ function sparseInfill(config, inset, angleDegrees, spacing, layerIndex, workBudg
     return [0, 60, 120].flatMap((rotation) => scans(angleDegrees + rotation));
   }
   if (config.sparsePattern === "cubic") {
-    const cubicSpacing = spacing * 3;
-    const shift = phase((layerIndex % 4) / 4) * 3;
-    return [0, 60, 120].flatMap((rotation) => (
-      phasedScans(angleDegrees + rotation, shift, cubicSpacing)
+    const shift = ((z / Math.SQRT2) % spacing + spacing) % spacing;
+    return [0, 120, 240].flatMap((rotation) => (
+      phasedScans(angleDegrees + rotation, shift)
     ));
   }
   return scans(angleDegrees + (layerIndex % 2) * 90);
@@ -855,6 +853,7 @@ export function generateGcode(input) {
       firstLayerHeight: config.firstLayerHeight,
       lineWidth: config.lineWidth,
       tiltAngle: config.tiltAngle,
+      tipDiameter: config.tipDiameter,
       tiltAxis: config.tiltAxis,
       angleMode: config.angleMode,
       orientation: config.orientation,

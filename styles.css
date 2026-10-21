@@ -286,7 +286,6 @@ body[data-theme="dark"] .pattern-option:has(input:checked) { border-color: #a989
 body[data-theme="dark"] .orientation-illustration,
 body[data-theme="dark"] .angle-mode-art,
 body[data-theme="dark"] .pattern-art { background: #211c28; }
-body[data-theme="dark"] .pattern-art:has(.slicer-pattern-icon) { background: #292c30; }
 body[data-theme="dark"] .preview-legend-heading,
 body[data-theme="dark"] .legend-toggle,
 body[data-theme="dark"] .preview-legend-items { color: #b9aec3; }

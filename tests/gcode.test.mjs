@@ -207,7 +207,7 @@ test("honeycomb shares clipped hexagon edges and preserves the wall overlap inse
   );
 });
 
-test("cubic infill forms a triangular lattice that shifts between layers", () => {
+test("cubic infill shifts three 120-degree line families by the height-driven triangular phase", () => {
   const result = generateGcode({
     ...baseConfig,
     height: 1.04,
@@ -217,22 +217,30 @@ test("cubic infill forms a triangular lattice that shifts between layers", () =>
     skirtLoops: 0,
     sparsePattern: "cubic",
   });
-  const layers = result.preview.allLayers.slice(0, 2);
-  const lineData = layers.map(({ paths }) => paths.map(({ points }) => {
+  const [firstLayer, secondLayer] = result.preview.allLayers;
+  const spacing = baseConfig.lineWidth * 100 / baseConfig.infillPercent;
+  const lineData = [firstLayer, secondLayer].map(({ paths }) => paths.map(({ points }) => {
     const [first, last] = [points[0], points.at(-1)];
     const angle = (Math.atan2(last.y - first.y, last.x - first.x) * 180 / Math.PI + 180) % 180;
     const normalX = -Math.sin(angle * Math.PI / 180);
     const normalY = Math.cos(angle * Math.PI / 180);
     const offset = ((first.x + last.x) / 2 - baseConfig.centerX) * normalX
       + ((first.y + last.y) / 2 - baseConfig.centerY) * normalY;
-    return { angle, offset };
+    return { angle, residue: ((offset % spacing) + spacing) % spacing };
   }));
-  for (const layer of lineData) {
-    assert.ok(layer.some(({ angle }) => Math.abs(angle - 45) < 1e-6));
-    assert.ok(layer.some(({ angle }) => Math.abs(angle - 105) < 1e-6));
-    assert.ok(layer.some(({ angle }) => Math.abs(angle - 165) < 1e-6));
+  const phaseChange = (secondLayer.z - firstLayer.z) / Math.SQRT2;
+  for (const angle of [45, 105, 165]) {
+    const residues = lineData.map((layer) => layer
+      .filter((line) => Math.abs(line.angle - angle) < 1e-6)
+      .map(({ residue }) => residue));
+    assert.ok(residues.every((values) => values.length > 0), `cubic should include the ${angle}° line family`);
+    const difference = Math.abs(residues[1][0] - residues[0][0]);
+    const wrappedDifference = Math.min(difference, spacing - difference);
+    assert.ok(
+      Math.abs(wrappedDifference - phaseChange) < 1e-5,
+      `${angle}° lines should shift by ΔZ / √2 modulo the infill spacing`,
+    );
   }
-  assert.notDeepEqual(lineData[0], lineData[1], "successive cubic layers shift to form diagonal connections");
 });
 
 test("gyroid infill follows the implicit gyroid surface and changes with layer height", () => {

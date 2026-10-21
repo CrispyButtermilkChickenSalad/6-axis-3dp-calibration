@@ -246,7 +246,7 @@ export function createScenePreview(canvas) {
     const orientationOffset = ({ trailing: Math.PI, leading: 0, adjacent: Math.PI / 2, "hybrid-trailing": 3 * Math.PI / 4, "hybrid-leading": Math.PI / 4 })[model.orientation] ?? Math.PI;
     const absoluteDirection = model.tiltAxis === "A" ? Math.PI / 2 : 0;
     const tiltDirection = model.angleMode === "adaptive" ? beadDirection + orientationOffset : absoluteDirection;
-    drawNozzleModel(context, screen, nozzlePosition, topZ, beadDirection, tiltDirection, model.tiltAngle, colors);
+    drawNozzleModel(context, screen, nozzlePosition, topZ, beadDirection, tiltDirection, model.tiltAngle, model.tipDiameter, colors);
     context.fillStyle = colors.text;
     context.textAlign = "left";
     context.font = "10px Segoe UI, sans-serif";
@@ -319,49 +319,60 @@ export function createScenePreview(canvas) {
     return heading;
   }
 
-  function drawNozzleModel(ctx, screen, position, z, beadHeading, tiltHeading, angleDegrees, colors) {
+  function drawNozzleModel(ctx, screen, position, z, beadHeading, tiltHeading, angleDegrees, tipDiameter, colors) {
     const tilt = angleDegrees * Math.PI / 180;
     const axisX = Math.cos(tiltHeading) * Math.sin(tilt);
     const axisY = Math.sin(tiltHeading) * Math.sin(tilt);
     const axisZ = Math.cos(tilt);
     const normalX = -Math.sin(tiltHeading);
     const normalY = Math.cos(tiltHeading);
+    const sides = 8;
     const along = (distance, radius, around) => screen(
       position.x + axisX * distance + radius * (normalX * Math.cos(around) - Math.cos(tiltHeading) * Math.cos(tilt) * Math.sin(around)),
       position.y + axisY * distance + radius * (normalY * Math.cos(around) - Math.sin(tiltHeading) * Math.cos(tilt) * Math.sin(around)),
       z + axisZ * distance + radius * Math.sin(tilt) * Math.sin(around),
     );
     const tip = screen(position.x, position.y, z);
-    const lowerRing = Array.from({ length: 8 }, (_, index) => {
-      return along(2, 0.8, index * Math.PI / 4);
-    });
-    const upperRing = Array.from({ length: 8 }, (_, index) => {
-      return along(9, 2.3, index * Math.PI / 4);
-    });
-    const depthOrder = Array.from({ length: 8 }, (_, index) => index)
-      .sort((first, second) => along(5.5, 2.3, first * Math.PI / 4).y - along(5.5, 2.3, second * Math.PI / 4).y);
+    const tipRing = Array.from({ length: sides }, (_, index) => (
+      along(0, tipDiameter / 2, index * Math.PI * 2 / sides)
+    ));
+    const neckRing = Array.from({ length: sides }, (_, index) => (
+      along(3, tipDiameter * 1.25, index * Math.PI * 2 / sides)
+    ));
+    const bodyRing = Array.from({ length: sides }, (_, index) => (
+      along(12, Math.max(3, tipDiameter * 2.5), index * Math.PI * 2 / sides)
+    ));
+    const depthOrder = Array.from({ length: sides }, (_, index) => index)
+      .sort((first, second) => bodyRing[first].y - bodyRing[second].y);
     for (const index of depthOrder) {
-      const next = (index + 1) % 8;
+      const next = (index + 1) % sides;
       ctx.beginPath();
-      ctx.moveTo(lowerRing[index].x, lowerRing[index].y);
-      ctx.lineTo(lowerRing[next].x, lowerRing[next].y);
-      ctx.lineTo(upperRing[next].x, upperRing[next].y);
-      ctx.lineTo(upperRing[index].x, upperRing[index].y);
+      ctx.moveTo(tipRing[index].x, tipRing[index].y);
+      ctx.lineTo(tipRing[next].x, tipRing[next].y);
+      ctx.lineTo(neckRing[next].x, neckRing[next].y);
+      ctx.lineTo(neckRing[index].x, neckRing[index].y);
       ctx.closePath();
       ctx.fillStyle = index % 2 ? "#51455f" : "#786887";
       ctx.fill();
       ctx.strokeStyle = "#392e46";
       ctx.lineWidth = 0.75;
       ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(neckRing[index].x, neckRing[index].y);
+      ctx.lineTo(neckRing[next].x, neckRing[next].y);
+      ctx.lineTo(bodyRing[next].x, bodyRing[next].y);
+      ctx.lineTo(bodyRing[index].x, bodyRing[index].y);
+      ctx.closePath();
+      ctx.fillStyle = index % 2 ? "#51455f" : "#786887";
+      ctx.fill();
+      ctx.stroke();
     }
     ctx.beginPath();
-    ctx.moveTo(tip.x, tip.y);
-    ctx.lineTo(lowerRing[1].x, lowerRing[1].y);
-    lowerRing.slice(2).forEach((item) => ctx.lineTo(item.x, item.y));
+    tipRing.forEach((item, index) => ctx[index ? "lineTo" : "moveTo"](item.x, item.y));
     ctx.closePath();
-    ctx.fillStyle = "#d69a6a";
+    ctx.fillStyle = "#51455f";
     ctx.fill();
-    ctx.strokeStyle = "#734b34";
+    ctx.strokeStyle = "#d6c4e7";
     ctx.stroke();
 
     const screenTip = screen(position.x, position.y, z + 0.25);
