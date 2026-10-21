@@ -1,5 +1,5 @@
 import { generateGcode, minimumLayerHeight } from "./gcode.mjs";
-import { createScenePreview } from "./preview.mjs";
+import { createScenePreview } from "./preview.mjs?v=toolpath-colors-2";
 
 const form = document.querySelector("#generator-form");
 const errorBox = document.querySelector("#form-error");
