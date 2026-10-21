@@ -258,7 +258,7 @@ test("preview layers expose first-layer skirt and purge, middle, and last paths"
   assert.ok(result.preview.allLayers.every((layer) => layer.paths.every((path) => Number.isFinite(path.z))));
 });
 
-test("full preview keeps every generated layer while slider anchors remain first, middle and last", () => {
+test("preview data exposes every selectable layer and the first, middle, and last anchors", () => {
   const result = generateGcode({ ...baseConfig, height: 2.1 });
   assert.equal(result.metrics.layers, 11);
   assert.deepEqual(result.preview.layers.map(({ number }) => number), [1, 6, 11]);

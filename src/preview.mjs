@@ -22,8 +22,8 @@ export function createScenePreview(canvas) {
     const height = rect.height;
     const dark = document.body.dataset.theme === "dark";
     const colors = dark
-      ? { background: "#211c28", grid: "#40364a", plane: "#2a2432", text: "#bdb0c8", side: "#74558f", sideDark: "#4e3863", top: "#a383bd", toolpath: "#e5b178", purge: "#86c4c7", skirt: "#b393d0" }
-      : { background: "#f7f5f9", grid: "#e5deeb", plane: "#f0ecf4", text: "#796e82", side: "#9477aa", sideDark: "#69517f", top: "#c4afd4", toolpath: "#9a60b5", purge: "#438c95", skirt: "#7c5a98" };
+      ? { background: "#211c28", grid: "#40364a", plane: "#2a2432", text: "#bdb0c8", side: "#74558f", sideDark: "#4e3863", top: "#a383bd", toolpath: "#d0b7e7", wallPath: "#9274a7", solidPath: "#d1a1de", sparsePath: "#bb88d0", prime: "#86c4c7" }
+      : { background: "#f7f5f9", grid: "#e5deeb", plane: "#f0ecf4", text: "#796e82", side: "#9477aa", sideDark: "#69517f", top: "#c4afd4", toolpath: "#9a60b5", wallPath: "#725587", solidPath: "#c17baf", sparsePath: "#9a60b5", prime: "#438c95" };
     context.fillStyle = colors.background;
     context.fillRect(0, 0, width, height);
     if (!model) {
@@ -49,6 +49,7 @@ export function createScenePreview(canvas) {
     };
     const halfX = model.width / 2;
     const halfY = model.depth / 2;
+    const topZ = model.viewZ ?? model.height;
     const corners = [
       [-halfX, -halfY], [halfX, -halfY], [halfX, halfY], [-halfX, halfY],
     ];
@@ -110,16 +111,21 @@ export function createScenePreview(canvas) {
       context.lineWidth = lineWidth;
       context.stroke();
     };
-    const pathColor = (path) => path.type === "wall" ? colors.sideDark
-      : path.type === "purge" ? colors.purge
-        : path.type === "skirt" ? colors.skirt : colors.toolpath;
+    const pathColor = (path) => {
+      if (!model.colorByType) return colors.toolpath;
+      if (path.type === "wall") return colors.wallPath;
+      if (path.type === "solid-infill") return colors.solidPath;
+      if (path.type === "sparse-infill") return colors.sparsePath;
+      return colors.prime;
+    };
     const drawLayer = (layer, opacity) => {
       context.save();
       context.globalAlpha = opacity;
-      for (const type of ["wall", "solid-infill", "sparse-infill", "purge", "skirt"]) {
+      for (const type of ["wall", "solid-infill", "sparse-infill", "prime"]) {
         context.beginPath();
         for (const path of layer.paths) {
-          if (path.type !== type || path.points.length < 2) continue;
+          const isPrime = path.type === "purge" || path.type === "skirt";
+          if ((type === "prime" ? !isPrime : path.type !== type) || path.points.length < 2) continue;
           const z = path.z ?? layer.z;
           const first = path.points[0];
           const start = screen(first.x, first.y, z);
@@ -184,7 +190,7 @@ export function createScenePreview(canvas) {
         return screen(centerX + Math.cos(angle) * radius, centerY + Math.sin(angle) * radius, z);
       });
       const bottom = ring(0, halfX);
-      const top = ring(heightMM, halfX);
+      const top = ring(topZ, halfX);
       for (let index = 0; index < segments; index += 1) {
         const next = (index + 1) % segments;
         if (Math.sin(index * Math.PI * 2 / segments - yaw) > -0.1) {
@@ -196,7 +202,7 @@ export function createScenePreview(canvas) {
       line([...bottom, bottom[0]], colors.sideDark, 0.8);
     } else {
       const bottom = corners.map(([x, y]) => screen(centerX + x, centerY + y, 0));
-      const top = corners.map(([x, y]) => screen(centerX + x, centerY + y, heightMM));
+      const top = corners.map(([x, y]) => screen(centerX + x, centerY + y, topZ));
       const faces = [
         { index: 0, fill: colors.side },
         { index: 1, fill: colors.sideDark },
@@ -211,12 +217,12 @@ export function createScenePreview(canvas) {
       line([...top, top[0]], colors.sideDark, 1);
     }
 
-    const topZ = model.viewZ ?? heightMM;
     if (model.allLayers) {
       const activeLayerNumber = model.activeLayerNumber;
       model.allLayers.forEach((layer) => {
+        if (layer.number > activeLayerNumber) return;
         if (layer.number === activeLayerNumber) return;
-        const progress = layer.number / model.allLayers.length;
+        const progress = layer.number / Math.max(1, activeLayerNumber);
         drawLayer(layer, 0.14 + progress * 0.34);
       });
     }
@@ -484,18 +490,24 @@ export function createScenePreview(canvas) {
       model = nextModel;
       model.viewZ = model.height;
       model.viewLabel = "LAST LAYER";
-      model.activeLayerNumber = model.layers?.at(-1)?.number;
-      model.paths = model.layers?.at(-1)?.paths ?? model.paths;
+      model.colorByType = true;
+      model.activeLayerNumber = model.allLayers?.at(-1)?.number;
+      model.paths = model.allLayers?.at(-1)?.paths ?? model.paths;
       draw();
     },
     setLayer(index) {
-      const layer = model?.layers?.[index];
+      const layer = model?.allLayers?.[index];
       if (!layer) return;
       model.paths = layer.paths;
       model.viewZ = layer.z;
-      model.viewLabel = layer.name;
+      model.viewLabel = `LAYER ${layer.number}`;
       model.activeLayerNumber = layer.number;
       nozzlePosition = null;
+      draw();
+    },
+    setColorByType(enabled) {
+      if (!model) return;
+      model.colorByType = enabled;
       draw();
     },
     reset() {

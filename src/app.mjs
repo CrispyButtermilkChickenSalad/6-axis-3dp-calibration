@@ -9,6 +9,8 @@ const statusBadge = document.querySelector("#status-badge");
 const preview = createScenePreview(document.querySelector("#preview-scene"));
 const layerSlider = document.querySelector("#preview-layer-slider");
 const layerLabel = document.querySelector("#preview-layer-label");
+const layerTicks = document.querySelector("#preview-layer-ticks");
+const pathColorToggle = document.querySelector("#path-color-toggle");
 let generated = null;
 
 function readConfig() {
@@ -150,9 +152,24 @@ form.addEventListener("submit", (event) => {
   try {
     generated = generateGcode(readConfig());
     preview.update(generated.preview);
-    layerSlider.value = "2";
+    preview.setColorByType(pathColorToggle.checked);
+    const layers = generated.preview.allLayers;
+    const lastIndex = layers.length - 1;
+    const middleIndex = Math.floor(lastIndex / 2);
+    layerSlider.max = String(lastIndex);
+    layerSlider.value = String(lastIndex);
+    layerTicks.replaceChildren();
+    const sliderTicks = [{ index: 0, label: "FIRST" }];
+    if (lastIndex > 1) sliderTicks.push({ index: middleIndex, label: "MIDDLE" });
+    if (lastIndex > 0) sliderTicks.push({ index: lastIndex, label: "LAST" });
+    sliderTicks.forEach(({ index, label }) => {
+      const option = document.createElement("option");
+      option.value = String(index);
+      option.label = label;
+      layerTicks.append(option);
+    });
     layerSlider.disabled = false;
-    updateLayerPreview(2);
+    updateLayerPreview(lastIndex);
     document.querySelector("#stat-shape").textContent = `${generated.preview.shape} · ${generated.preview.width} × ${generated.preview.depth} × ${generated.preview.height} mm`;
     document.querySelector("#stat-layers").textContent = String(generated.metrics.layers).padStart(2, "0");
     document.querySelector("#stat-paths").textContent = String(generated.metrics.pathCount);
@@ -176,11 +193,20 @@ function updateLayerPreview(value) {
   if (!generated) return;
   const index = Number(value);
   preview.setLayer(index);
-  const layer = generated.preview.layers[index];
-  layerLabel.textContent = `${layer.name} · ${layer.number}/${generated.metrics.layers} · Z ${layer.z.toFixed(2)} mm`;
+  const layer = generated.preview.allLayers[index];
+  const lastIndex = generated.preview.allLayers.length - 1;
+  const anchor = index === 0 ? "FIRST LAYER"
+    : index === lastIndex ? "LAST LAYER"
+      : index === Math.floor(lastIndex / 2) ? "MIDDLE LAYER"
+        : `LAYER ${layer.number}`;
+  layerLabel.textContent = `${anchor} · ${layer.number}/${generated.metrics.layers} · Z ${layer.z.toFixed(2)} mm`;
 }
 
 layerSlider.addEventListener("input", () => updateLayerPreview(layerSlider.value));
+pathColorToggle.addEventListener("change", () => {
+  preview.setColorByType(pathColorToggle.checked);
+  document.querySelector(".preview-legend").classList.toggle("is-uniform", !pathColorToggle.checked);
+});
 
 downloadButton.addEventListener("click", () => {
   if (!generated) return;
