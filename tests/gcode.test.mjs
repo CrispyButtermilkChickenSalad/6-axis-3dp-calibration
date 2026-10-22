@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { generateGcode, minimumLayerHeight } from "../src/gcode.mjs";
+import { mechanicalSpecimen } from "../src/mechanical.mjs";
 
 const baseConfig = {
   shape: "cuboid",
@@ -105,6 +106,62 @@ test("zero sparse infill and zero skins keep walls without infill paths", () => 
   assert.ok(wallsOnly.metrics.pathCount < solid.metrics.pathCount);
   assert.match(wallsOnly.text, /; wall/);
   assert.doesNotMatch(wallsOnly.text, /^G1 .*; (?:solid|sparse) infill$/m);
+});
+
+test("100% sparse infill uses the solid infill pattern", () => {
+  const result = generateGcode({
+    ...baseConfig,
+    shape: "cube",
+    width: 24,
+    height: 1,
+    wallCount: 0,
+    topLayers: 0,
+    bottomLayers: 0,
+    infillPercent: 100,
+    sparsePattern: "gyroid",
+  });
+  const types = new Set(result.preview.allLayers.flatMap((layer) => layer.paths.map((path) => path.type)));
+  assert.ok(types.has("solid-infill"));
+  assert.ok(!types.has("sparse-infill"));
+});
+
+test("mechanical samples follow ASTM and ISO dimensions", () => {
+  const expected = {
+    "tensile astm": [165, 19, 3.2],
+    "tensile iso": [170, 20, 4],
+    "flexural astm": [127, 12.7, 3.2],
+    "flexural iso": [80, 10, 4],
+    "impact astm": [63.5, 12.7, 3.2],
+    "impact iso": [80, 10, 4],
+  };
+  for (const [key, [length, width, thickness]] of Object.entries(expected)) {
+    const [sample, standard] = key.split(" ");
+    const specimen = mechanicalSpecimen(sample, standard);
+    assert.equal(specimen.length, length);
+    assert.equal(specimen.width, width);
+    assert.equal(specimen.thickness, thickness);
+    const xs = specimen.outline.map((p) => p.x);
+    const ys = specimen.outline.map((p) => p.y);
+    assert.ok(Math.abs(Math.max(...xs) - Math.min(...xs) - length) < 0.01);
+    assert.ok(Math.abs(Math.max(...ys) - Math.min(...ys) - width) < 0.01);
+  }
+});
+
+test("mechanical samples generate walls and solid infill at 100% density", () => {
+  for (const mechanicalSample of ["tensile", "flexural", "impact"]) {
+    const result = generateGcode({
+      ...baseConfig,
+      sampleType: "mechanical",
+      mechanicalSample,
+      mechanicalStandard: "astm",
+      infillPercent: 100,
+    });
+    const types = new Set(result.preview.allLayers.flatMap((layer) => layer.paths.map((path) => path.type)));
+    assert.ok(types.has("wall"));
+    assert.ok(types.has("solid-infill"));
+    assert.ok(!types.has("sparse-infill"));
+    assert.equal(result.preview.sampleType, "mechanical");
+  }
 });
 
 test("supports all sparse infill patterns and a wall-free sparse specimen", () => {
@@ -466,7 +523,7 @@ test("optional purge priming uses two overlapping minimum-length lines at 200% f
     purgePath.points[1].x - purgePath.points[0].x,
     purgePath.points[1].y - purgePath.points[0].y,
   ), 40);
-  const expectedSpacing = baseConfig.lineWidth - baseConfig.firstLayerHeight * (1 - Math.PI / 4);
+  const expectedSpacing = 2 * (baseConfig.lineWidth - baseConfig.firstLayerHeight * (1 - Math.PI / 4));
   assert.ok(Math.abs(Math.abs(purgePath.points[2].y - purgePath.points[1].y) - expectedSpacing) < 1e-6);
   assert.equal(result.preview.layers[0].paths.some(({ type }) => type === "skirt"), false);
 
@@ -529,4 +586,81 @@ test("requires a Klipper extruder name for a non-default tool", () => {
   assert.throws(() => generateGcode({ ...baseConfig, firmware: "klipper", toolIndex: 1 }), /enter its extruder name/);
   const result = generateGcode({ ...baseConfig, firmware: "klipper", toolIndex: 1, extruderName: "extruder1" });
   assert.match(result.text, /SET_PRESSURE_ADVANCE EXTRUDER=extruder1 ADVANCE=0.04/);
+});
+
+test("3-axis machines generate with no rotary words even when a tilt is entered", () => {
+  const result = generateGcode({ ...baseConfig, axisCount: 3, tiltAngle: 25, angleMode: "adaptive" });
+  assert.doesNotMatch(result.text, /\b[ABC]-?\d/);
+  assert.equal(result.preview.tiltAngle, 0);
+  assert.match(result.text, /no rotary axes/);
+});
+
+test("mechanical samples support orientation, count, spacing and one group skirt", () => {
+  const flat = { ...baseConfig, sampleType: "mechanical", mechanicalSample: "flexural", mechanicalStandard: "astm", infillPercent: 100, wallCount: 2, height: 3.2, skirtLoops: 1 };
+  const single = generateGcode(flat);
+  assert.equal(single.preview.height, 3.2);
+  const four = generateGcode({ ...flat, sampleCount: 4, sampleSpacing: 4 });
+  assert.equal(four.preview.sampleCount, 4);
+  assert.equal(four.preview.bodies.length, 4);
+  const skirts = four.preview.allLayers[0].paths.filter((path) => path.type === "skirt");
+  assert.equal(skirts.length, 1);
+  const xs = skirts[0].points.map((p) => p.x);
+  assert.ok(Math.max(...xs) - Math.min(...xs) > four.preview.sampleWidth);
+  const side = generateGcode({ ...flat, mechanicalOrientation: "side" });
+  assert.ok(Math.abs(side.preview.height - 12.7) < 1e-6);
+  const upright = generateGcode({ ...flat, mechanicalOrientation: "upright" });
+  assert.ok(Math.abs(upright.preview.height - 127) < 1e-6);
+});
+
+test("rejects more mechanical samples than fit on the bed", () => {
+  assert.throws(() => generateGcode({
+    ...baseConfig, sampleType: "mechanical", mechanicalSample: "tensile", mechanicalStandard: "astm",
+    infillPercent: 100, sampleCount: 10, sampleSpacing: 4,
+  }), /At most \d+ fit/);
+});
+
+test("5-axis machines can pair A+C or B+C with the matching axis words", () => {
+  const five = { ...baseConfig, axisCount: 5, angleMode: "adaptive" };
+  const words = (pair) => generateGcode({ ...five, rotaryPair: pair }).text.split("\n").filter((line) => /^G1 .* E/.test(line) && / [ABC]-?\d/.test(line));
+  const ac = words("AC");
+  assert.ok(ac.length && ac.every((line) => / A/.test(line) && / C/.test(line) && !/ B-?\d/.test(line)));
+  const bc = words("BC");
+  assert.ok(bc.length && bc.every((line) => / B/.test(line) && / C/.test(line) && !/ A-?\d/.test(line)));
+  const ab = words("AB");
+  assert.ok(ab.length && ab.every((line) => !/ C-?\d/.test(line)));
+});
+
+test("brim sits inside the skirt, uses the priming multiplier, and priming defaults to 150%", () => {
+  const plain = generateGcode({ ...baseConfig, skirtEnabled: true, skirtLoops: 1, purgeMultiplier: undefined });
+  assert.match(plain.text, /extrusion multiplier 150%/);
+  const brimmed = generateGcode({ ...baseConfig, skirtEnabled: true, skirtLoops: 1, brimEnabled: true, brimLines: 4 });
+  const layer = brimmed.preview.allLayers[0].paths;
+  assert.equal(layer.filter((path) => path.type === "brim").length, 4);
+  const extent = (path) => Math.max(...path.points.map((p) => p.x)) - Math.min(...path.points.map((p) => p.x));
+  const brimWidest = Math.max(...layer.filter((path) => path.type === "brim").map(extent));
+  assert.ok(extent(layer.find((path) => path.type === "skirt")) > brimWidest);
+  assert.ok(brimmed.text.split("\n").some((line) => line.endsWith("; brim")));
+});
+
+test("tensile side orientation generates supports with an adjustable interface gap", () => {
+  const tensile = {
+    ...baseConfig, sampleType: "mechanical", mechanicalSample: "tensile", mechanicalStandard: "astm",
+    mechanicalOrientation: "side", infillPercent: 100, supportEnabled: true,
+  };
+  const supported = generateGcode(tensile);
+  const supportLayers = supported.preview.allLayers.filter((layer) => layer.paths.some((path) => path.type === "support"));
+  assert.ok(supportLayers.length > 0);
+  const wider = generateGcode({ ...tensile, supportInterfaceSpacing: 1.5 });
+  const count = (result) => result.preview.allLayers.filter((layer) => layer.paths.some((path) => path.type === "support")).length;
+  assert.ok(count(wider) < count(supported));
+  assert.ok(!generateGcode({ ...tensile, supportEnabled: false }).text.includes("; support"));
+  const supportPoints = (result) => result.preview.allLayers.flatMap((layer) => layer.paths.filter((path) => path.type === "support")).reduce((sum, path) => sum + path.points.length, 0);
+  assert.ok(supportPoints(generateGcode({ ...tensile, supportRoofDensity: 90 })) > supportPoints(generateGcode({ ...tensile, supportRoofEnabled: false })));
+  const raftLayer = generateGcode({ ...tensile, brimEnabled: true, brimLines: 3 }).preview.allLayers[0].paths;
+  const raft = raftLayer.filter((path) => path.type === "support");
+  assert.ok(raft.length > 0 && raft.every((path) => path.points.length > 6));
+  assert.ok(raftLayer.some((path) => path.type === "brim"));
+  assert.match(supported.text, /roof 2 layers at 45% monotonic/);
+  assert.ok(!generateGcode({ ...tensile, mechanicalOrientation: "flat" }).text.includes("; support"));
+  assert.ok(!generateGcode({ ...tensile, mechanicalSample: "flexural" }).text.includes("; support"));
 });

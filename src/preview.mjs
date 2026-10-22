@@ -6,11 +6,13 @@ export function createScenePreview(canvas) {
   let yaw = -0.62;
   let pitch = 0.56;
   let zoom = 1;
+  let panX = 0;
+  let panY = 0;
   let drag = null;
   let dragMode = null;
   let nozzlePosition = null;
   let viewTransform = null;
-
+  let solidView = false;
   function draw() {
     const rect = canvas.getBoundingClientRect();
     if (!rect.width || !rect.height) return;
@@ -31,6 +33,7 @@ export function createScenePreview(canvas) {
     colors.solidPath = paletteColor("solid");
     colors.sparsePath = paletteColor("sparse");
     colors.prime = paletteColor("prime");
+    colors.supportPath = paletteColor("support");
     context.fillStyle = colors.background;
     context.fillRect(0, 0, width, height);
     if (!model) {
@@ -70,8 +73,8 @@ export function createScenePreview(canvas) {
     const minY = Math.min(...fitPoints.map((item) => item.y));
     const maxY = Math.max(...fitPoints.map((item) => item.y));
     const scale = Math.min(width * 0.64 / Math.max(1, maxX - minX), height * 0.58 / Math.max(1, maxY - minY)) * zoom;
-    const offsetX = width / 2 - (minX + maxX) / 2 * scale;
-    const offsetY = height * 0.55 - (minY + maxY) / 2 * scale;
+    const offsetX = width / 2 - (minX + maxX) / 2 * scale + panX;
+    const offsetY = height * 0.55 - (minY + maxY) / 2 * scale + panY;
     const screen = (x, y, z) => {
       const result = projected(x, y, z);
       return { x: offsetX + result.x * scale, y: offsetY + result.y * scale };
@@ -123,32 +126,58 @@ export function createScenePreview(canvas) {
       if (path.type === "wall") return colors.wallPath;
       if (path.type === "solid-infill") return colors.solidPath;
       if (path.type === "sparse-infill") return colors.sparsePath;
+      if (path.type === "support") return colors.supportPath;
       return colors.prime;
     };
-    const drawLayer = (layer, opacity) => {
+    const drawSolidLayer = (layer, paths) => {
+      const z = layer.z;
+      const thickness = Math.max(0.1, model.layerHeight ?? 0.2) * Math.cos(pitch) * scale;
+      const widthPx = Math.max(1, (model.lineWidth ?? 0.42) * scale);
       context.save();
-      context.globalAlpha = opacity;
-      for (const type of ["wall", "solid-infill", "sparse-infill", "prime"]) {
-        context.beginPath();
-        for (const path of layer.paths) {
-          const isPrime = path.type === "purge" || path.type === "skirt";
-          if ((type === "prime" ? !isPrime : path.type !== type) || path.points.length < 2) continue;
-          const z = path.z ?? layer.z;
-          const first = path.points[0];
-          const start = screen(first.x, first.y, z);
-          context.moveTo(start.x, start.y);
-          for (let index = 1; index < path.points.length; index += 1) {
-            const point = path.points[index];
-            const projectedPoint = screen(point.x, point.y, z);
-            context.lineTo(projectedPoint.x, projectedPoint.y);
+      context.lineCap = "round";
+      context.lineJoin = "round";
+      for (const type of ["prime", "support", "wall", "solid-infill", "sparse-infill"]) {
+        const batch = paths.filter((path) => path.points.length > 1
+          && (type === "prime" ? ["purge", "skirt", "brim"].includes(path.type) : path.type === type));
+        if (!batch.length) continue;
+        const trace = (dy) => {
+          context.beginPath();
+          for (const path of batch) {
+            const pathZ = path.z ?? z;
+            path.points.forEach((point, index) => {
+              const p = screen(point.x, point.y, pathZ);
+              context[index ? "lineTo" : "moveTo"](p.x, p.y + dy);
+            });
           }
+        };
+        const base = pathColor({ type });
+        if (!model.solidView) {
+          trace(0);
+          context.lineWidth = 1;
+          context.strokeStyle = base;
+          context.stroke();
+          continue;
         }
-        context.strokeStyle = pathColor({ type });
-        context.lineWidth = 1;
+        // Side wall, dark rim, body and highlight give each bead a rounded cross-section.
+        context.lineWidth = widthPx;
+        trace(thickness * 0.5);
+        context.strokeStyle = base;
+        context.stroke();
+        context.strokeStyle = "rgba(0, 0, 0, 0.42)";
+        context.stroke();
+        trace(0);
+        context.strokeStyle = "rgba(0, 0, 0, 0.45)";
+        context.stroke();
+        context.lineWidth = widthPx * 0.72;
+        context.strokeStyle = base;
+        context.stroke();
+        context.lineWidth = widthPx * 0.28;
+        context.strokeStyle = "rgba(255, 255, 255, 0.35)";
         context.stroke();
       }
       context.restore();
     };
+    const drawLayer = (layer) => drawSolidLayer(layer, layer.paths);
 
     const bedCenterX = (model.bedMinX + model.bedMaxX) / 2;
     const bedCenterY = (model.bedMinY + model.bedMaxY) / 2;
@@ -190,7 +219,36 @@ export function createScenePreview(canvas) {
     context.stroke();
     context.restore();
 
-    if (model.shape === "cylinder") {
+    for (const body of model.bodies ?? [{ x: 0, y: 0 }]) {
+    const centerX = model.centerX + body.x;
+    const centerY = model.centerY + body.y;
+    const halfX = (model.sampleWidth ?? model.width) / 2;
+    const halfY = (model.sampleDepth ?? model.depth) / 2;
+    const corners = [[-halfX, -halfY], [halfX, -halfY], [halfX, halfY], [-halfX, halfY]];
+    if (model.outline) {
+      const points = model.outline;
+      const bottom = points.map((p) => screen(centerX + p.x, centerY + p.y, 0));
+      const top = points.map((p) => screen(centerX + p.x, centerY + p.y, topZ));
+      const faces = [];
+      points.forEach((p, index) => {
+        const next = (index + 1) % points.length;
+        const ex = points[next].x - p.x;
+        const ey = points[next].y - p.y;
+        const length = Math.hypot(ex, ey) || 1;
+        const nx = ey / length;
+        const ny = -ex / length;
+        const facing = nx * Math.sin(yaw) + ny * Math.cos(yaw);
+        if (facing > 0.05) return;
+        faces.push({
+          index, next, depth: (p.x + points[next].x) * Math.sin(yaw) + (p.y + points[next].y) * Math.cos(yaw),
+          fill: nx * Math.cos(yaw) - ny * Math.sin(yaw) > 0 ? colors.side : colors.sideDark,
+        });
+      });
+      faces.sort((a, b) => b.depth - a.depth).forEach(({ index, next, fill }) => {
+        polygon([bottom[index], bottom[next], top[next], top[index]], fill, fill);
+      });
+      polygon(top, colors.top);
+    } else if (model.shape === "cylinder") {
       const segments = 40;
       const ring = (z, radius) => Array.from({ length: segments }, (_, index) => {
         const angle = index * Math.PI * 2 / segments;
@@ -223,22 +281,32 @@ export function createScenePreview(canvas) {
       polygon(top, colors.top);
       line([...top, top[0]], colors.sideDark, 1);
     }
+    }
 
     if (model.allLayers) {
       const activeLayerNumber = model.activeLayerNumber;
+      const infillWindow = 6;
+      const infillStride = 8;
       model.allLayers.forEach((layer) => {
-        if (layer.number > activeLayerNumber) return;
-        if (layer.number === activeLayerNumber) return;
-        const progress = layer.number / Math.max(1, activeLayerNumber);
-        drawLayer(layer, 0.14 + progress * 0.34);
+        if (layer.number >= activeLayerNumber) return;
+        const near = activeLayerNumber - layer.number <= infillWindow;
+        const sampled = layer.number % infillStride === 0;
+        if (near || sampled) {
+          context.globalAlpha = near ? 1 : 0.45;
+          drawLayer(layer);
+          context.globalAlpha = 1;
+          return;
+        }
+        drawLayer({ ...layer, paths: layer.paths.filter((path) => !path.type.endsWith("infill")) });
       });
     }
+    drawSolidLayer({ z: topZ }, model.paths);
     model.paths.forEach((path) => {
       const points = path.points.map((item) => screen(item.x, item.y, path.z ?? topZ));
       drawDirectionalPath(context, points, pathColor(path));
     });
     if (!nozzlePosition) {
-      const firstPath = model.paths.find((path) => path.points.length > 1 && !["purge", "skirt"].includes(path.type))
+      const firstPath = model.paths.find((path) => path.points.length > 1 && !["purge", "skirt", "brim", "support"].includes(path.type))
         ?? model.paths.find((path) => path.points.length > 1);
       nozzlePosition = firstPath?.points[Math.floor(firstPath.points.length / 2)] ?? { x: centerX, y: centerY };
     }
@@ -250,7 +318,7 @@ export function createScenePreview(canvas) {
     context.fillStyle = colors.text;
     context.textAlign = "left";
     context.font = "10px Segoe UI, sans-serif";
-    context.fillText(`${model.viewLabel ?? "LAST LAYER"} · Z ${topZ.toFixed(2)} MM · ${model.tiltAngle}° ${model.tiltAxis}-AXIS TILT`, 12, height - 11);
+    context.fillText(`${model.viewLabel ?? "LAST LAYER"} · Z ${topZ.toFixed(2)} MM · ${model.axisCount < 4 ? "NO TILT (3-AXIS)" : `${model.tiltAngle}° ${model.tiltAxis}-AXIS TILT`}`, 12, height - 11);
   }
 
   function drawDirectionalPath(ctx, points, color) {
@@ -461,9 +529,10 @@ export function createScenePreview(canvas) {
   }
 
   canvas.addEventListener("pointerdown", (event) => {
-    if (event.button !== 0 && event.button !== 2) return;
+    if (event.button > 2) return;
     event.preventDefault();
-    dragMode = event.button === 2 ? "orbit" : "nozzle";
+    if (event.button === 1 || event.shiftKey) dragMode = "pan";
+    else dragMode = event.button === 2 ? "orbit" : "nozzle";
     drag = { x: event.clientX, y: event.clientY };
     canvas.setPointerCapture(event.pointerId);
     if (dragMode === "nozzle") {
@@ -476,6 +545,9 @@ export function createScenePreview(canvas) {
     if (!drag) return;
     if (dragMode === "nozzle" && viewTransform && model) {
       placeNozzle(event.clientX, event.clientY);
+    } else if (dragMode === "pan") {
+      panX += event.clientX - drag.x;
+      panY += event.clientY - drag.y;
     } else if (dragMode === "orbit") {
       yaw += (event.clientX - drag.x) * 0.01;
       pitch = clamp(pitch + (event.clientY - drag.y) * 0.008, 0.12, 1.35);
@@ -509,6 +581,7 @@ export function createScenePreview(canvas) {
       model.viewZ = model.height;
       model.viewLabel = "LAST LAYER";
       model.colorByType = true;
+      model.solidView = solidView;
       model.activeLayerNumber = model.allLayers?.at(-1)?.number;
       model.paths = model.allLayers?.at(-1)?.paths ?? model.paths;
       draw();
@@ -523,6 +596,12 @@ export function createScenePreview(canvas) {
       nozzlePosition = null;
       draw();
     },
+    setSolidView(enabled) {
+      solidView = enabled;
+      if (!model) return;
+      model.solidView = enabled;
+      draw();
+    },
     setColorByType(enabled) {
       if (!model) return;
       model.colorByType = enabled;
@@ -532,6 +611,8 @@ export function createScenePreview(canvas) {
       yaw = -0.62;
       pitch = 0.56;
       zoom = 1;
+      panX = 0;
+      panY = 0;
       nozzlePosition = null;
       draw();
     },
