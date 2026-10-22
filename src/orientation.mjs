@@ -90,6 +90,9 @@ export function orientedSpecimen(specimen, orientation) {
     return { orientation, width: length, depth: width, height: thickness, minFeature: specimen.minFeature, rectangles: null };
   }
   const side = orientation === "side";
+  const outline = specimen.outline;
+  const spanMinX = bounds.minX;
+  const spanMaxX = bounds.maxX;
   return {
     orientation,
     width: side ? length : width,
@@ -102,6 +105,29 @@ export function orientedSpecimen(specimen, orientation) {
         : scanIntervals(specimen.outline, "x", bounds.minX + zMid);
       return intervals.map(([from, to]) => ({ minX: from, maxX: to, minY: -thickness / 2, maxY: thickness / 2 }));
     },
+    /**
+     * Support for the tensile bar on its edge: below the neck the part is two
+     * separate grip blocks. The support fills the gap between them, stopping
+     * `interfaceSpacing` short of the overhang above and `clearance` from the grips.
+     */
+    support: side && specimen.key === "tensile"
+      ? (zMid, interfaceSpacing, clearance) => {
+        const level = zMid + interfaceSpacing;
+        if (level >= width / 2) return [];
+        const solid = scanIntervals(outline, "y", bounds.minY + level);
+        const rectangles = [];
+        let cursor = spanMinX;
+        for (const [from, to] of [...solid, [spanMaxX, spanMaxX]]) {
+          const minX = cursor + (cursor === spanMinX ? 0 : clearance);
+          const maxX = from - (from === spanMaxX ? 0 : clearance);
+          if (maxX - minX > clearance * 1.5 && (cursor !== spanMinX || from !== spanMaxX)) {
+            rectangles.push({ minX, maxX, minY: -thickness / 2, maxY: thickness / 2 });
+          }
+          cursor = to;
+        }
+        return rectangles.filter((rectangle) => rectangle.minX > spanMinX + EPSILON || rectangle.maxX < spanMaxX - EPSILON);
+      }
+      : null,
   };
 }
 

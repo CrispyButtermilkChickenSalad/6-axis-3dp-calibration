@@ -13,6 +13,7 @@
   --path-wall: #2457a7;
   --path-solid: #c45100;
   --path-sparse: #7338a6;
+  --path-support: #6b7280;
   --path-uniform: #7338a6;
   --mono: "Cascadia Code", Consolas, monospace;
   --sans: "Segoe UI", Arial, sans-serif;
@@ -183,6 +184,7 @@ body[data-theme="dark"] .legend-warning { background: #3a2f1c; color: #f0cf94; }
 .legend-wall { background: var(--path-wall); }
 .legend-solid { background: var(--path-solid); }
 .legend-sparse { background: var(--path-sparse); }
+.legend-support { background: var(--path-support); }
 .preview-legend.is-uniform .legend-swatch { background: var(--path-uniform); }
 .ready-badge { display: flex; align-items: center; gap: 7px; padding: 7px 9px; border-radius: 20px; background: #f1f3f0; color: #778078; font: 9px var(--mono); letter-spacing: .04em; }
 .ready-badge.is-ready { background: #e8f2eb; color: var(--green-dark); }
@@ -265,6 +267,7 @@ body[data-theme="dark"] {
   --path-wall: #78a9ff;
   --path-solid: #ffac5c;
   --path-sparse: #c99bff;
+  --path-support: #aab2c0;
   --path-uniform: #c99bff;
 }
 body[data-theme="dark"] .intro p,

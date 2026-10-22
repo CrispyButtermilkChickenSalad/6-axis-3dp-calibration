@@ -23,6 +23,10 @@ function pathSpacing(width, height) {
   return width - height * (1 - Math.PI / 4);
 }
 
+export function primingSpacing(lineWidth, firstLayerHeight, multiplierPercent) {
+  return multiplierPercent / 100 * pathSpacing(lineWidth, firstLayerHeight);
+}
+
 function ranged(value, name, min, max) {
   const number = finite(value, name);
   if (number < min || number > max) throw new Error(`${name} must be between ${min} and ${max}.`);
@@ -454,13 +458,21 @@ function axisValues(config, heading) {
     if (Math.abs(angle) <= EPSILON || config.axisCount < 4) return {};
     return { [config.tiltAxis]: angle };
   }
+  const direction = config.rotaryCMode === "bed" ? -1 : 1;
+  const wrap = (degrees) => ((degrees % 360) + 360 + 180) % 360 - 180;
+  if (config.axisCount === 5 && config.rotaryPair !== "AB") {
+    // One tilt axis plus C: C swings the fixed tilt toward the bead-relative azimuth.
+    const target = heading + config.orientationOffset;
+    return config.rotaryPair === "AC"
+      ? { A: angle, C: direction * wrap(target - 90) }
+      : { B: -angle, C: direction * wrap(target) };
+  }
   const azimuth = (heading + config.orientationOffset) * Math.PI / 180;
   const values = {
     A: angle * Math.sin(azimuth),
     B: -angle * Math.cos(azimuth),
   };
   if (config.axisCount >= 6) {
-    const direction = config.rotaryCMode === "bed" ? -1 : 1;
     const cAngle = ((heading + config.orientationOffset + 180) % 360 + 360) % 360 - 180;
     values.C = direction * cAngle;
   }
@@ -560,7 +572,11 @@ function validate(config) {
   }
   const extrusionMultiplier = ranged(config.extrusionMultiplier, "Extrusion multiplier", 1, 300) / 100;
   const filamentDiameter = ranged(config.filamentDiameter, "Filament diameter", 1, 4);
-  const tiltAxis = hasRotaryAxes ? String(config.tiltAxis).toUpperCase() : "A";
+  const rotaryPair = axisCount === 5
+    ? (["AB", "AC", "BC"].includes(config.rotaryPair) ? config.rotaryPair : "AB")
+    : axisCount >= 6 ? "ABC" : "";
+  let tiltAxis = hasRotaryAxes ? String(config.tiltAxis).toUpperCase() : "A";
+  if (axisCount === 5 && rotaryPair !== "AB") tiltAxis = rotaryPair[0];
   if (hasRotaryAxes && !["A", "B"].includes(tiltAxis)) throw new Error("Choose A or B as the tilt axis.");
   const angleMode = hasRotaryAxes ? String(config.angleMode) : "absolute";
   if (!["absolute", "adaptive"].includes(angleMode)) throw new Error("Choose absolute or adaptive angle mode.");
@@ -586,7 +602,21 @@ function validate(config) {
   if (!Number.isInteger(skirtLoops)) throw new Error("Skirt loops must be a whole number.");
   const purgeLine = config.purgeLine === true || config.purgeLine === "true" || config.purgeLine === "on";
   const minimumPurgeLength = ranged(config.minimumPurgeLength ?? 30, "Minimum purge line length", 1, 1000);
-  const purgeMultiplier = ranged(config.purgeMultiplier ?? 200, "Priming extrusion multiplier", 100, 300) / 100;
+  const purgeMultiplier = ranged(config.purgeMultiplier ?? 150, "Priming extrusion multiplier", 100, 300) / 100;
+  const primeSpacing = purgeMultiplier * pathSpacing(lineWidth, firstLayerHeight);
+  const primeWidth = primeSpacing + firstLayerHeight * (1 - Math.PI / 4);
+  const brimEnabled = config.brimEnabled === true || config.brimEnabled === "on";
+  const brimLines = brimEnabled ? ranged(config.brimLines ?? 5, "Brim lines", 1, 40) : 0;
+  if (!Number.isInteger(brimLines)) throw new Error("Brim lines must be a whole number.");
+  const brimExtent = brimLines > 0 ? (brimLines - 1) * primeSpacing + primeWidth / 2 : 0;
+  if (brimEnabled && sampleCount > 1 && brimExtent * 2 + lineWidth > sampleSpacing) {
+    throw new Error(`A ${format(brimExtent)} mm brim on each sample would overlap its neighbours at ${format(sampleSpacing)} mm spacing. Reduce the brim lines or increase the sample spacing.`);
+  }
+  const supportInterface = ranged(config.supportInterfaceSpacing ?? 0.5, "Support interface spacing", 0, 5);
+  const supportEnabled = config.supportEnabled === undefined
+    ? true
+    : config.supportEnabled === true || config.supportEnabled === "on";
+  const supportActive = Boolean(oriented?.support) && supportEnabled;
   const axisLimits = {};
   for (const axis of ["a", "b", "c"]) {
     const min = hasRotaryAxes ? finite(config[`${axis}Min`], `${axis.toUpperCase()}-axis minimum`) : -180;
@@ -602,7 +632,8 @@ function validate(config) {
     filamentDiameter, axisCount, tiltAxis, angleMode, orientationOffset: orientationOffsetValue,
     orientation: String(config.orientation), firmware: String(config.firmware),
     bedWidth, bedDepth, centerX, centerY, skirtLoops, skirtDistance, purgeLine,
-    minimumPurgeLength, purgeMultiplier,
+    minimumPurgeLength, purgeMultiplier, primeSpacing, primeWidth, brimLines, brimExtent,
+    supportActive, supportInterface, rotaryPair,
     rotaryCMode: String(config.rotaryCMode) === "bed" ? "bed" : "tool",
     bedShape, bedMinX, bedMaxX, bedMinY, bedMaxY, originAtCenter,
     firstLayerFan: ranged(config.firstLayerFan, "First layer fan", 0, 100),
@@ -641,14 +672,14 @@ function validate(config) {
     const valuesAtRest = axisValues(values, 0);
     checkAxisLimits(values, valuesAtRest);
   }
-  const skirtSpacing = pathSpacing(lineWidth, firstLayerHeight);
-  const skirtMargin = skirtLoops > 0 ? skirtDistance + (skirtLoops - 1) * skirtSpacing + lineWidth / 2 : 0;
-  const purgeSpacing = pathSpacing(lineWidth, firstLayerHeight);
+  const skirtMargin = skirtLoops > 0
+    ? brimExtent + skirtDistance + (skirtLoops - 1) * primeSpacing + primeWidth / 2
+    : brimExtent;
   const fitsBed = (groupWidth, groupDepth) => {
     const radiusX = groupWidth / 2 + skirtMargin;
     const radiusY = groupDepth / 2 + skirtMargin;
     const purgeLength = Math.max(minimumPurgeLength, groupWidth);
-    const purgeStartY = -groupDepth / 2 - lineWidth - 2;
+    const purgeStartY = -groupDepth / 2 - brimExtent - lineWidth - 2;
     const purgeMinX = purgeLine ? -groupWidth / 2 - lineWidth / 2 : 0;
     const purgeMaxX = purgeLine ? -groupWidth / 2 + purgeLength + lineWidth / 2 : 0;
     const purgeMinY = purgeLine ? purgeStartY - lineWidth / 2 : 0;
@@ -770,8 +801,8 @@ function makeLayerPaths(config, layerIndex, z, totalLayers, workBudget) {
 
   if (layerIndex === 0 && config.purgeLine) {
     const x = -config.groupWidth / 2;
-    const y = -config.groupDepth / 2 - config.lineWidth - 2;
-    const secondY = y + pathSpacing(config.lineWidth, layerHeight);
+    const y = -config.groupDepth / 2 - config.brimExtent - config.lineWidth - 2;
+    const secondY = y + config.primeSpacing;
     const purgeLength = Math.max(config.minimumPurgeLength, config.groupWidth);
     const passes = [
       [point(x, y), point(x + purgeLength, y)],
@@ -779,20 +810,6 @@ function makeLayerPaths(config, layerIndex, z, totalLayers, workBudget) {
     ];
     paths.push({ type: "purge", points: connectScanlines(passes)[0] });
   }
-  if (layerIndex === 0) {
-    for (let loop = config.skirtLoops - 1; loop >= 0; loop -= 1) {
-      const inset = -(config.skirtDistance + loop * wallSpacing);
-      if (!groupedSkirt && config.region) {
-        for (const points of config.region.loops(inset)) paths.push({ type: "skirt", points });
-        continue;
-      }
-      const outline = isCylinder && !groupedSkirt
-        ? circlePath(outerRadius - inset)
-        : rectanglePath(config.groupWidth - inset * 2, config.groupDepth - inset * 2, 0);
-      if (outline.length) paths.push({ type: "skirt", points: outline });
-    }
-  }
-
   let sampleConfig = config;
   if (config.oriented && config.oriented.rectangles) {
     const zMid = Math.max(0, z - layerHeight / 2);
@@ -803,9 +820,92 @@ function makeLayerPaths(config, layerIndex, z, totalLayers, workBudget) {
       region: createRectangleRegion(config.oriented.rectangles(zMid)),
     };
   }
+  const supportRects = config.supportActive
+    ? config.oriented.support(Math.max(0, z - layerHeight / 2), config.supportInterface, config.lineWidth)
+    : [];
+  if (layerIndex === 0) {
+    for (let loop = config.skirtLoops - 1; loop >= 0; loop -= 1) {
+      const inset = -(config.brimExtent + config.skirtDistance + loop * config.primeSpacing);
+      if (!groupedSkirt && config.region) {
+        for (const points of config.region.loops(inset)) paths.push({ type: "skirt", points });
+        continue;
+      }
+      const outline = isCylinder && !groupedSkirt
+        ? circlePath(outerRadius - inset)
+        : rectanglePath(config.groupWidth - inset * 2, config.groupDepth - inset * 2, 0);
+      if (outline.length) paths.push({ type: "skirt", points: outline });
+    }
+    const brimPaths = [];
+    if (config.brimLines > 0) {
+      let brimRegion = sampleConfig.region;
+      if (config.oriented?.rectangles) {
+        brimRegion = createRectangleRegion(mergeRectangles(
+          [...config.oriented.rectangles(Math.max(0, z - layerHeight / 2)), ...supportRects],
+          config.brimExtent * 2,
+        ));
+      }
+      for (let line = config.brimLines - 1; line >= 0; line -= 1) {
+        const distance = config.primeWidth / 2 + line * config.primeSpacing;
+        if (brimRegion) {
+          for (const points of brimRegion.loops(-distance)) brimPaths.push({ type: "brim", points });
+        } else {
+          const outline = isCylinder
+            ? circlePath(outerRadius + distance)
+            : rectanglePath(config.width + distance * 2, config.depth + distance * 2, 0);
+          if (outline.length) brimPaths.push({ type: "brim", points: outline });
+        }
+      }
+    }
+    for (const placement of config.placements) paths.push(...translatePaths(brimPaths, placement.x, placement.y));
+  }
+
+  if (supportRects.length) {
+    const supportPaths = supportFill(supportRects, config.lineWidth, layerIndex);
+    for (const placement of config.placements) paths.push(...translatePaths(supportPaths, placement.x, placement.y));
+  }
   const samplePaths = makeSamplePaths(sampleConfig, layerIndex, totalLayers, layerHeight, workBudget, z);
   for (const placement of config.placements) paths.push(...translatePaths(samplePaths, placement.x, placement.y));
   return paths.map((path) => ({ ...path, z }));
+}
+
+function mergeRectangles(rectangles, gap) {
+  const sorted = [...rectangles].sort((a, b) => a.minX - b.minX);
+  const merged = [];
+  for (const rectangle of sorted) {
+    const last = merged.at(-1);
+    if (last && rectangle.minX - last.maxX <= gap) {
+      last.maxX = Math.max(last.maxX, rectangle.maxX);
+      last.minY = Math.min(last.minY, rectangle.minY);
+      last.maxY = Math.max(last.maxY, rectangle.maxY);
+    } else {
+      merged.push({ ...rectangle });
+    }
+  }
+  return merged;
+}
+
+function supportFill(rectangles, lineWidth, layerIndex) {
+  const ribSpacing = 3;
+  const paths = [];
+  for (const rectangle of rectangles) {
+    const minX = rectangle.minX + lineWidth / 2;
+    const maxX = rectangle.maxX - lineWidth / 2;
+    const minY = rectangle.minY + lineWidth / 2;
+    const maxY = rectangle.maxY - lineWidth / 2;
+    if (maxX - minX < lineWidth || maxY - minY < lineWidth) continue;
+    paths.push({ type: "support", points: [point(minX, minY), point(maxX, minY), point(maxX, maxY), point(minX, maxY), point(minX, minY)] });
+    const ribs = Math.max(0, Math.floor((maxX - minX) / ribSpacing) - 1);
+    if (!ribs) continue;
+    const step = (maxX - minX) / (ribs + 1);
+    const zigzag = [];
+    for (let rib = 1; rib <= ribs; rib += 1) {
+      const x = minX + rib * step;
+      const up = (rib + layerIndex) % 2 === 0;
+      zigzag.push(point(x, up ? minY : maxY), point(x, up ? maxY : minY));
+    }
+    paths.push({ type: "support", points: zigzag });
+  }
+  return paths;
 }
 
 function extrusionArea(height, width) {
@@ -841,11 +941,12 @@ export function generateGcode(input) {
     "; Primitive tilting-nozzle test specimen",
     `; Shape: ${config.specimen ? config.specimen.label : config.shape}; dimensions: ${format(config.width)} x ${format(config.depth)} x ${format(config.height)} mm`,
     `; Walls: ${config.wallCount}; sparse infill: ${config.sparsePattern} at ${format(config.infillPercent, 0)}%; solid infill: ${config.solidPattern}; top/bottom layers: ${config.topLayers}/${config.bottomLayers}; infill-to-wall overlap: ${format(config.infillOverlap, 0)}%`,
-    `; Priming: purge lines ${config.purgeLine ? "on" : "off"} (${format(config.minimumPurgeLength, 0)} mm minimum each); skirt loops ${config.skirtLoops}; extrusion multiplier ${format(config.purgeMultiplier * 100, 0)}%`,
+    `; Priming: purge lines ${config.purgeLine ? "on" : "off"} (${format(config.minimumPurgeLength, 0)} mm minimum each); skirt loops ${config.skirtLoops}; brim lines ${config.brimLines} (${format(config.brimExtent)} mm wide); extrusion multiplier ${format(config.purgeMultiplier * 100, 0)}%; priming line spacing ${format(config.primeSpacing, 3)} mm`,
+    ...(config.supportActive ? [`; Supports: automatic, interface spacing ${format(config.supportInterface)} mm`] : []),
     `; Infill base angle: ${format(config.infillAngle, 1)} degrees`,
     `; Tilt: ${format(config.tiltAngle, 1)} degrees; orientation: ${config.orientation}; angle mode: ${config.angleMode}`,
     `; Nozzle tip: ${format(config.tipDiameter, 2)} mm; hole: ${format(config.holeDiameter, 2)} mm; layer height: ${format(config.layerHeight, 3)} mm; extrusion multiplier: ${format(config.extrusionMultiplier * 100, 1)}%`,
-    `; Machine: ${config.axisCount}-axis${config.axisCount >= 4 ? `; tilt axis ${config.tiltAxis}; rotary C: ${config.rotaryCMode}` : "; no rotary axes (A/B/C moves not generated)"}; firmware dialect: ${config.firmware}`,
+    `; Machine: ${config.axisCount}-axis${config.axisCount >= 4 ? `; rotary axes ${config.axisCount === 4 ? config.tiltAxis : config.rotaryPair}; tilt axis ${config.tiltAxis}; rotary C: ${config.rotaryCMode}` : "; no rotary axes (A/B/C moves not generated)"}; firmware dialect: ${config.firmware}`,
     ...(config.specimen ? [`; Samples: ${config.sampleCount} x ${config.specimen.label}, ${config.sampleOrientation} orientation, ${format(config.sampleSpacing)} mm spacing; group footprint ${format(config.groupWidth)} x ${format(config.groupDepth)} mm with a single shared skirt`] : []),
     `; Bed: ${config.bedShape}; origin at center: ${config.originAtCenter}; print center X${format(config.centerX)} Y${format(config.centerY)}`,
     "; Verify kinematics, axis signs, limits, bed fit and firmware-specific start/end commands before printing.",
@@ -910,7 +1011,7 @@ export function generateGcode(input) {
         const next = points[pointIndex];
         const length = Math.hypot(next.x - previous.x, next.y - previous.y);
         if (length <= EPSILON) continue;
-        const multiplier = path.type === "purge" || path.type === "skirt"
+        const multiplier = ["purge", "skirt", "brim"].includes(path.type)
           ? config.purgeMultiplier
           : config.extrusionMultiplier;
         const deltaE = extrusionArea(layerHeights[layerIndex], config.lineWidth) * multiplier / filamentArea * length;

@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#f5f2f8">
     <title>Tilting nozzle · primitive generator</title>
-    <link rel="stylesheet" href="./styles.css?v=mechanical-2">
-    <script type="module" src="./src/app.mjs?v=mechanical-2"></script>
+    <link rel="stylesheet" href="./styles.css?v=mechanical-3">
+    <script type="module" src="./src/app.mjs?v=mechanical-3"></script>
   </head>
   <body>
     <main class="shell">
@@ -68,6 +68,10 @@
                 <label class="field"><span>Dimension standard</span><select name="mechanicalStandard"><option value="astm">ASTM</option><option value="iso">ISO</option></select></label>
                 <label class="field"><span>Number of samples <small>1–10</small></span><input name="sampleCount" type="number" min="1" max="10" step="1" value="1"></label>
                 <label class="field"><span>Sample spacing <small>mm</small></span><input name="sampleSpacing" type="number" min="0" max="100" step="0.5" value="4"></label>
+              </div>
+              <div id="support-options" class="field-grid" hidden>
+                <label class="check-field"><input name="supportEnabled" type="checkbox" checked><span>Automatic support under the tensile neck</span></label>
+                <label class="field"><span>Support interface spacing <small>mm</small></span><input name="supportInterfaceSpacing" type="number" min="0" max="5" step="0.1" value="0.5"></label>
               </div>
               <p class="field-hint" id="mechanical-dimensions"></p>
               <p class="field-hint" id="mechanical-layout"></p>
@@ -150,9 +154,12 @@
               <label class="check-field"><input name="skirtEnabled" type="checkbox" checked><span>Prime with skirt</span></label>
               <label class="field"><span>Skirt loops</span><input name="skirtLoops" type="number" min="0" max="10" step="1" value="1"></label>
               <label class="field"><span>Skirt distance <small>mm</small></span><input name="skirtDistance" type="number" min="0" max="20" step="0.5" value="4"></label>
-              <label class="field"><span>Priming extrusion multiplier <small>% for purge lines + skirt</small></span><input name="purgeMultiplier" type="number" min="100" max="300" step="1" value="200"></label>
+              <label class="field"><span>Priming extrusion multiplier <small>% for purge, skirt + brim</small></span><input name="purgeMultiplier" type="number" min="100" max="300" step="1" value="150"></label>
+              <label class="check-field"><input name="brimEnabled" type="checkbox"><span>Add brim around the specimen (inside the skirt)</span></label>
+              <label class="field"><span>Brim lines</span><input name="brimLines" type="number" min="1" max="40" step="1" value="5"></label>
+              <label class="field"><span>Brim width <small>mm, linked to lines</small></span><input name="brimWidth" type="number" min="0.1" max="100" step="any" value="3"></label>
             </div>
-            <p class="field-hint">Enabled priming paths run before the specimen on the first layer. The purge option lays down two parallel, slightly overlapping lines; each is at least the selected minimum length and uses the priming multiplier.</p>
+            <p class="field-hint">Enabled priming paths run before the specimen on the first layer. The purge option lays down two parallel lines, the brim sits against the part, and the skirt starts outside the brim. All of them use the priming multiplier, which also sets their overlap: line spacing is the multiplier times the normal bead spacing, so a higher multiplier packs the lines further apart.</p>
 
             <details class="advanced">
               <summary><span>Advanced machine + print settings</span><span class="summary-note">MOTION / START G-CODE / PA</span></summary>
@@ -161,7 +168,7 @@
                 <label class="field"><span>Firmware</span><select name="firmware"><option value="generic">Generic / Marlin-style</option><option value="marlin">Marlin</option><option value="klipper">Klipper</option><option value="reprap">RepRapFirmware</option></select></label>
                 <label class="field"><span>Machine axes</span><select name="axisCount"><option value="3">3-axis</option><option value="4" selected>4-axis</option><option value="5">5-axis</option><option value="6">6-axis</option></select></label>
                 <fieldset class="field axis-checks" id="rotary-axes">
-                  <legend>Rotary axis / rotation about</legend>
+                  <legend>Rotary axis / rotation about <small>(5-axis: pick two)</small></legend>
                   <label class="check-field"><input name="rotaryA" type="checkbox"><span>A / X-axis</span></label>
                   <label class="check-field"><input name="rotaryB" type="checkbox"><span>B / Y-axis</span></label>
                   <label class="check-field"><input name="rotaryC" type="checkbox"><span>C / Z-axis</span></label>
@@ -232,7 +239,8 @@
             <div class="preview-legend-heading"><strong>TOOLPATH LEGEND</strong><label class="legend-toggle"><input id="path-color-toggle" type="checkbox" checked><span>Color by type</span></label><label class="legend-toggle"><input id="solid-view-toggle" type="checkbox"><span>Simulated solid</span></label></div>
              <p id="solid-view-warning" class="legend-warning" hidden>Simulated solid is on: drawing every bead can slow the preview and this page, especially for tall or dense specimens. Turn it off if the page becomes unresponsive.</p>
             <div class="preview-legend-items">
-              <span><i class="legend-swatch legend-prime"></i>Purge / skirt</span>
+              <span><i class="legend-swatch legend-prime"></i>Purge / skirt / brim</span>
+              <span><i class="legend-swatch legend-support"></i>Support</span>
               <span><i class="legend-swatch legend-wall"></i>Walls</span>
               <span><i class="legend-swatch legend-solid"></i>Solid infill</span>
               <span><i class="legend-swatch legend-sparse"></i>Sparse infill</span>
@@ -240,7 +248,7 @@
           </div>
           <div class="preview-wrap">
             <canvas id="preview-scene" tabindex="0" aria-label="Interactive 3D preview of the generated toolpath; left-drag moves the nozzle, right-drag orbits"></canvas>
-            <div class="preview-hint">Left-drag to move the nozzle. Right-click and drag to orbit. First-layer preview includes enabled priming lines and skirt paths. Scroll to zoom.</div>
+            <div class="preview-hint">Left-drag to move the nozzle. Right-drag to orbit. Middle-drag or Shift+drag to pan. First-layer preview includes enabled priming lines, brim and skirt paths. Scroll to zoom.</div>
             <div class="preview-controls"><span>LEFT DRAG · NOZZLE</span><span>RIGHT DRAG · ORBIT</span><button type="button" id="reset-view">RESET VIEW</button></div>
           </div>
           <div class="preview-stats">

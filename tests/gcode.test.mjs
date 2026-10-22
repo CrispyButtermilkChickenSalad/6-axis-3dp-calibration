@@ -523,7 +523,7 @@ test("optional purge priming uses two overlapping minimum-length lines at 200% f
     purgePath.points[1].x - purgePath.points[0].x,
     purgePath.points[1].y - purgePath.points[0].y,
   ), 40);
-  const expectedSpacing = baseConfig.lineWidth - baseConfig.firstLayerHeight * (1 - Math.PI / 4);
+  const expectedSpacing = 2 * (baseConfig.lineWidth - baseConfig.firstLayerHeight * (1 - Math.PI / 4));
   assert.ok(Math.abs(Math.abs(purgePath.points[2].y - purgePath.points[1].y) - expectedSpacing) < 1e-6);
   assert.equal(result.preview.layers[0].paths.some(({ type }) => type === "skirt"), false);
 
@@ -617,4 +617,43 @@ test("rejects more mechanical samples than fit on the bed", () => {
     ...baseConfig, sampleType: "mechanical", mechanicalSample: "tensile", mechanicalStandard: "astm",
     infillPercent: 100, sampleCount: 10, sampleSpacing: 4,
   }), /At most \d+ fit/);
+});
+
+test("5-axis machines can pair A+C or B+C with the matching axis words", () => {
+  const five = { ...baseConfig, axisCount: 5, angleMode: "adaptive" };
+  const words = (pair) => generateGcode({ ...five, rotaryPair: pair }).text.split("\n").filter((line) => /^G1 .* E/.test(line) && / [ABC]-?\d/.test(line));
+  const ac = words("AC");
+  assert.ok(ac.length && ac.every((line) => / A/.test(line) && / C/.test(line) && !/ B-?\d/.test(line)));
+  const bc = words("BC");
+  assert.ok(bc.length && bc.every((line) => / B/.test(line) && / C/.test(line) && !/ A-?\d/.test(line)));
+  const ab = words("AB");
+  assert.ok(ab.length && ab.every((line) => !/ C-?\d/.test(line)));
+});
+
+test("brim sits inside the skirt, uses the priming multiplier, and priming defaults to 150%", () => {
+  const plain = generateGcode({ ...baseConfig, skirtEnabled: true, skirtLoops: 1, purgeMultiplier: undefined });
+  assert.match(plain.text, /extrusion multiplier 150%/);
+  const brimmed = generateGcode({ ...baseConfig, skirtEnabled: true, skirtLoops: 1, brimEnabled: true, brimLines: 4 });
+  const layer = brimmed.preview.allLayers[0].paths;
+  assert.equal(layer.filter((path) => path.type === "brim").length, 4);
+  const extent = (path) => Math.max(...path.points.map((p) => p.x)) - Math.min(...path.points.map((p) => p.x));
+  const brimWidest = Math.max(...layer.filter((path) => path.type === "brim").map(extent));
+  assert.ok(extent(layer.find((path) => path.type === "skirt")) > brimWidest);
+  assert.ok(brimmed.text.split("\n").some((line) => line.endsWith("; brim")));
+});
+
+test("tensile side orientation generates supports with an adjustable interface gap", () => {
+  const tensile = {
+    ...baseConfig, sampleType: "mechanical", mechanicalSample: "tensile", mechanicalStandard: "astm",
+    mechanicalOrientation: "side", infillPercent: 100, supportEnabled: true,
+  };
+  const supported = generateGcode(tensile);
+  const supportLayers = supported.preview.allLayers.filter((layer) => layer.paths.some((path) => path.type === "support"));
+  assert.ok(supportLayers.length > 0);
+  const wider = generateGcode({ ...tensile, supportInterfaceSpacing: 1.5 });
+  const count = (result) => result.preview.allLayers.filter((layer) => layer.paths.some((path) => path.type === "support")).length;
+  assert.ok(count(wider) < count(supported));
+  assert.ok(!generateGcode({ ...tensile, supportEnabled: false }).text.includes("; support"));
+  assert.ok(!generateGcode({ ...tensile, mechanicalOrientation: "flat" }).text.includes("; support"));
+  assert.ok(!generateGcode({ ...tensile, mechanicalSample: "flexural" }).text.includes("; support"));
 });

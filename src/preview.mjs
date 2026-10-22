@@ -6,6 +6,8 @@ export function createScenePreview(canvas) {
   let yaw = -0.62;
   let pitch = 0.56;
   let zoom = 1;
+  let panX = 0;
+  let panY = 0;
   let drag = null;
   let dragMode = null;
   let nozzlePosition = null;
@@ -31,6 +33,7 @@ export function createScenePreview(canvas) {
     colors.solidPath = paletteColor("solid");
     colors.sparsePath = paletteColor("sparse");
     colors.prime = paletteColor("prime");
+    colors.supportPath = paletteColor("support");
     context.fillStyle = colors.background;
     context.fillRect(0, 0, width, height);
     if (!model) {
@@ -70,8 +73,8 @@ export function createScenePreview(canvas) {
     const minY = Math.min(...fitPoints.map((item) => item.y));
     const maxY = Math.max(...fitPoints.map((item) => item.y));
     const scale = Math.min(width * 0.64 / Math.max(1, maxX - minX), height * 0.58 / Math.max(1, maxY - minY)) * zoom;
-    const offsetX = width / 2 - (minX + maxX) / 2 * scale;
-    const offsetY = height * 0.55 - (minY + maxY) / 2 * scale;
+    const offsetX = width / 2 - (minX + maxX) / 2 * scale + panX;
+    const offsetY = height * 0.55 - (minY + maxY) / 2 * scale + panY;
     const screen = (x, y, z) => {
       const result = projected(x, y, z);
       return { x: offsetX + result.x * scale, y: offsetY + result.y * scale };
@@ -123,6 +126,7 @@ export function createScenePreview(canvas) {
       if (path.type === "wall") return colors.wallPath;
       if (path.type === "solid-infill") return colors.solidPath;
       if (path.type === "sparse-infill") return colors.sparsePath;
+      if (path.type === "support") return colors.supportPath;
       return colors.prime;
     };
     const drawSolidLayer = (layer, paths) => {
@@ -132,9 +136,9 @@ export function createScenePreview(canvas) {
       context.save();
       context.lineCap = "round";
       context.lineJoin = "round";
-      for (const type of ["prime", "wall", "solid-infill", "sparse-infill"]) {
+      for (const type of ["prime", "support", "wall", "solid-infill", "sparse-infill"]) {
         const batch = paths.filter((path) => path.points.length > 1
-          && (type === "prime" ? path.type === "purge" || path.type === "skirt" : path.type === type));
+          && (type === "prime" ? ["purge", "skirt", "brim"].includes(path.type) : path.type === type));
         if (!batch.length) continue;
         const trace = (dy) => {
           context.beginPath();
@@ -293,7 +297,7 @@ export function createScenePreview(canvas) {
       drawDirectionalPath(context, points, pathColor(path));
     });
     if (!nozzlePosition) {
-      const firstPath = model.paths.find((path) => path.points.length > 1 && !["purge", "skirt"].includes(path.type))
+      const firstPath = model.paths.find((path) => path.points.length > 1 && !["purge", "skirt", "brim", "support"].includes(path.type))
         ?? model.paths.find((path) => path.points.length > 1);
       nozzlePosition = firstPath?.points[Math.floor(firstPath.points.length / 2)] ?? { x: centerX, y: centerY };
     }
@@ -516,9 +520,10 @@ export function createScenePreview(canvas) {
   }
 
   canvas.addEventListener("pointerdown", (event) => {
-    if (event.button !== 0 && event.button !== 2) return;
+    if (event.button > 2) return;
     event.preventDefault();
-    dragMode = event.button === 2 ? "orbit" : "nozzle";
+    if (event.button === 1 || event.shiftKey) dragMode = "pan";
+    else dragMode = event.button === 2 ? "orbit" : "nozzle";
     drag = { x: event.clientX, y: event.clientY };
     canvas.setPointerCapture(event.pointerId);
     if (dragMode === "nozzle") {
@@ -531,6 +536,9 @@ export function createScenePreview(canvas) {
     if (!drag) return;
     if (dragMode === "nozzle" && viewTransform && model) {
       placeNozzle(event.clientX, event.clientY);
+    } else if (dragMode === "pan") {
+      panX += event.clientX - drag.x;
+      panY += event.clientY - drag.y;
     } else if (dragMode === "orbit") {
       yaw += (event.clientX - drag.x) * 0.01;
       pitch = clamp(pitch + (event.clientY - drag.y) * 0.008, 0.12, 1.35);
@@ -594,6 +602,8 @@ export function createScenePreview(canvas) {
       yaw = -0.62;
       pitch = 0.56;
       zoom = 1;
+      panX = 0;
+      panY = 0;
       nozzlePosition = null;
       draw();
     },
