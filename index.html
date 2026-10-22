@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#f5f2f8">
     <title>Tilting nozzle · primitive generator</title>
-    <link rel="stylesheet" href="./styles.css?v=toolpath-colors-2">
-    <script type="module" src="./src/app.mjs?v=toolpath-colors-2"></script>
+    <link rel="stylesheet" href="./styles.css?v=mechanical-1">
+    <script type="module" src="./src/app.mjs?v=mechanical-1"></script>
   </head>
   <body>
     <main class="shell">
@@ -24,6 +24,13 @@
             <span class="panel-index">CONFIG</span>
           </div>
           <form id="generator-form">
+            <fieldset class="shape-selector sample-type-selector">
+              <legend>Sample type</legend>
+              <label class="shape-option"><input type="radio" name="sampleType" value="primitive" checked><span>Primitive samples</span></label>
+              <label class="shape-option"><input type="radio" name="sampleType" value="mechanical"><span>Mechanical samples</span></label>
+            </fieldset>
+
+            <div id="primitive-options">
             <fieldset class="shape-selector">
               <legend>Primitive</legend>
               <label class="shape-option"><input type="radio" name="shape" value="cube"><span class="shape-icon cube-icon"></span><span>Cube</span></label>
@@ -37,6 +44,22 @@
               <label class="field" data-shape-field="depth"><span>Depth Y <small>mm</small></span><input name="depth" type="number" min="2" max="200" step="0.1" value="24" required></label>
               <label class="field" data-shape-field="diameter" hidden><span>Diameter <small>mm</small></span><input name="diameter" type="number" min="2" max="200" step="0.1" value="24" required></label>
               <label class="field"><span>Height Z <small>mm</small></span><input name="height" type="number" min="0.2" max="200" step="0.1" value="20" required></label>
+            </div>
+            </div>
+
+            <div id="mechanical-options" hidden>
+              <fieldset class="visual-choice-group pattern-group">
+                <legend>Mechanical test <span>Printed flat, long axis along X · <a href="https://github.com/CrispyButtermilkChickenSalad/6-axis-3dp-calibration/wiki" target="_blank" rel="noopener noreferrer">dimensions on the wiki</a></span></legend>
+                <div class="pattern-options sparse-pattern-options sample-pattern-options">
+                  <label class="pattern-option"><input type="radio" name="mechanicalSample" value="tensile" checked><span class="pattern-art" aria-hidden="true"><svg viewBox="0 0 100 54"><path class="sample-fill" d="M6 16H30Q38 16 42 21H58Q62 16 70 16H94V38H70Q62 38 58 33H42Q38 38 30 38H6Z"/><path class="pattern-arrow" d="M38 46H62M42 43.5 38 46l4 2.5M58 43.5 62 46l-4 2.5"/></svg></span><span class="pattern-name">Tensile</span><span class="orientation-note">Dog-bone with a narrow gauge section for pulling.</span></label>
+                  <label class="pattern-option"><input type="radio" name="mechanicalSample" value="flexural"><span class="pattern-art" aria-hidden="true"><svg viewBox="0 0 100 54"><path class="sample-fill" d="M8 10H92V20H8Z"/><path class="sample-fill" d="M8 32H92V38H8Z"/><path d="M22 38l-4 8h8zM78 38l-4 8h8z"/><circle cx="50" cy="28" r="3.5"/><path class="pattern-arrow" d="M50 14v7m-2.5-2.5 2.5 2.5 2.5-2.5" transform="translate(0 -1)"/></svg></span><span class="pattern-name">Flexural</span><span class="orientation-note">Plain bar, shown with its three-point bend loading.</span></label>
+                  <label class="pattern-option"><input type="radio" name="mechanicalSample" value="impact"><span class="pattern-art" aria-hidden="true"><svg viewBox="0 0 100 54"><path class="sample-fill" d="M14 18H46L50 29 54 18H86V38H14Z"/><path class="pattern-arrow" d="M50 48v-8m-2.5 2.5L50 40l2.5 2.5"/></svg></span><span class="pattern-name">Impact</span><span class="orientation-note">Bar with a 45° V-notch (Notch A) for Izod testing.</span></label>
+                </div>
+              </fieldset>
+              <div class="field-grid mechanical-standard-grid">
+                <label class="field"><span>Dimension standard</span><select name="mechanicalStandard"><option value="astm">ASTM</option><option value="iso">ISO</option></select></label>
+              </div>
+              <p class="field-hint" id="mechanical-dimensions"></p>
             </div>
 
             <div class="section-label"><span>WALLS + INFILL</span><span class="rule"></span></div>
@@ -189,7 +212,8 @@
             <p class="preview-layer-note">Shows the selected layer and all layers below it.</p>
           </div>
           <div class="preview-legend">
-            <div class="preview-legend-heading"><strong>TOOLPATH LEGEND</strong><label class="legend-toggle"><input id="path-color-toggle" type="checkbox" checked><span>Color by type</span></label></div>
+            <div class="preview-legend-heading"><strong>TOOLPATH LEGEND</strong><label class="legend-toggle"><input id="path-color-toggle" type="checkbox" checked><span>Color by type</span></label><label class="legend-toggle"><input id="solid-view-toggle" type="checkbox"><span>Simulated solid</span></label></div>
+             <p id="solid-view-warning" class="legend-warning" hidden>Simulated solid is on: drawing every bead can slow the preview and this page, especially for tall or dense specimens. Turn it off if the page becomes unresponsive.</p>
             <div class="preview-legend-items">
               <span><i class="legend-swatch legend-prime"></i>Purge / skirt</span>
               <span><i class="legend-swatch legend-wall"></i>Walls</span>

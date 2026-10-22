@@ -10,7 +10,7 @@ export function createScenePreview(canvas) {
   let dragMode = null;
   let nozzlePosition = null;
   let viewTransform = null;
-
+  let solidView = false;
   function draw() {
     const rect = canvas.getBoundingClientRect();
     if (!rect.width || !rect.height) return;
@@ -146,14 +146,29 @@ export function createScenePreview(canvas) {
             });
           }
         };
+        const base = pathColor({ type });
+        if (!model.solidView) {
+          trace(0);
+          context.lineWidth = 1;
+          context.strokeStyle = base;
+          context.stroke();
+          continue;
+        }
+        // Side wall, dark rim, body and highlight give each bead a rounded cross-section.
         context.lineWidth = widthPx;
         trace(thickness * 0.5);
-        context.strokeStyle = pathColor({ type });
+        context.strokeStyle = base;
         context.stroke();
-        context.strokeStyle = "rgba(0, 0, 0, 0.38)";
+        context.strokeStyle = "rgba(0, 0, 0, 0.42)";
         context.stroke();
         trace(0);
-        context.strokeStyle = pathColor({ type });
+        context.strokeStyle = "rgba(0, 0, 0, 0.45)";
+        context.stroke();
+        context.lineWidth = widthPx * 0.72;
+        context.strokeStyle = base;
+        context.stroke();
+        context.lineWidth = widthPx * 0.28;
+        context.strokeStyle = "rgba(255, 255, 255, 0.35)";
         context.stroke();
       }
       context.restore();
@@ -200,7 +215,30 @@ export function createScenePreview(canvas) {
     context.stroke();
     context.restore();
 
-    if (model.shape === "cylinder") {
+    if (model.outline) {
+      const points = model.outline;
+      const bottom = points.map((p) => screen(centerX + p.x, centerY + p.y, 0));
+      const top = points.map((p) => screen(centerX + p.x, centerY + p.y, topZ));
+      const faces = [];
+      points.forEach((p, index) => {
+        const next = (index + 1) % points.length;
+        const ex = points[next].x - p.x;
+        const ey = points[next].y - p.y;
+        const length = Math.hypot(ex, ey) || 1;
+        const nx = ey / length;
+        const ny = -ex / length;
+        const facing = nx * Math.sin(yaw) + ny * Math.cos(yaw);
+        if (facing > 0.05) return;
+        faces.push({
+          index, next, depth: (p.x + points[next].x) * Math.sin(yaw) + (p.y + points[next].y) * Math.cos(yaw),
+          fill: nx * Math.cos(yaw) - ny * Math.sin(yaw) > 0 ? colors.side : colors.sideDark,
+        });
+      });
+      faces.sort((a, b) => b.depth - a.depth).forEach(({ index, next, fill }) => {
+        polygon([bottom[index], bottom[next], top[next], top[index]], fill, fill);
+      });
+      polygon(top, colors.top);
+    } else if (model.shape === "cylinder") {
       const segments = 40;
       const ring = (z, radius) => Array.from({ length: segments }, (_, index) => {
         const angle = index * Math.PI * 2 / segments;
@@ -519,6 +557,7 @@ export function createScenePreview(canvas) {
       model.viewZ = model.height;
       model.viewLabel = "LAST LAYER";
       model.colorByType = true;
+      model.solidView = solidView;
       model.activeLayerNumber = model.allLayers?.at(-1)?.number;
       model.paths = model.allLayers?.at(-1)?.paths ?? model.paths;
       draw();
@@ -531,6 +570,12 @@ export function createScenePreview(canvas) {
       model.viewLabel = `LAYER ${layer.number}`;
       model.activeLayerNumber = layer.number;
       nozzlePosition = null;
+      draw();
+    },
+    setSolidView(enabled) {
+      solidView = enabled;
+      if (!model) return;
+      model.solidView = enabled;
       draw();
     },
     setColorByType(enabled) {

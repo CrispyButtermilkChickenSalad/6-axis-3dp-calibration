@@ -118,6 +118,12 @@ h1 span { color: var(--green); }
 .pattern-group { margin-top: 17px; }
 .pattern-options { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; }
 .sparse-pattern-options { grid-template-columns: repeat(3, minmax(0,1fr)); }
+.sample-pattern-options .pattern-art svg { height: 54px; max-width: 170px; }
+.sample-pattern-options .pattern-art svg .sample-fill { fill: rgba(146, 112, 176, .2); }
+.sample-type-selector { grid-template-columns: repeat(2, 1fr); }
+.mechanical-standard-grid { margin-top: 14px; }
+.legend-warning { margin: 6px 0 0; padding: 6px 8px; border-left: 3px solid #d99a3d; background: #fbf1df; color: #7a5420; font-size: 10px; line-height: 1.5; }
+body[data-theme="dark"] .legend-warning { background: #3a2f1c; color: #f0cf94; }
 .pattern-option { position: relative; display: grid; grid-template-rows: auto auto auto; gap: 5px; min-width: 0; padding: 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); cursor: pointer; }
 .pattern-option:has(input:checked) { border-color: #a48bbb; background: #f7f2fa; box-shadow: inset 0 0 0 1px #a48bbb; }
 .pattern-option:focus-within { outline: 2px solid #c4b0d5; outline-offset: 2px; }

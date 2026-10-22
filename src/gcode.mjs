@@ -1,6 +1,9 @@
 const EPSILON = 1e-8;
 const MAX_LAYERS = 2000;
 
+import { createPolygonRegion } from "./region.mjs";
+import { mechanicalSpecimen } from "./mechanical.mjs";
+
 export function minimumLayerHeight(tipDiameter, angleDegrees) {
   const tip = finite(tipDiameter, "Nozzle tip diameter");
   const angle = finite(angleDegrees, "Nozzle tilt angle");
@@ -118,8 +121,54 @@ function cylinderInfill(radius, inset, angleDegrees, spacing, snake = false, pha
   return snake ? connectScanlines(paths) : paths;
 }
 
+function regionScan(region, inset, angleDegrees, spacing, snake = false, phase = 0) {
+  const angle = angleDegrees * Math.PI / 180;
+  const direction = point(Math.cos(angle), Math.sin(angle));
+  const normal = point(-direction.y, direction.x);
+  const { minX, maxX, minY, maxY } = region.bounds;
+  const corners = [point(minX, minY), point(maxX, minY), point(maxX, maxY), point(minX, maxY)];
+  const across = corners.map((corner) => corner.x * normal.x + corner.y * normal.y);
+  const along = corners.map((corner) => corner.x * direction.x + corner.y * direction.y);
+  const lineStart = Math.min(...along) - 1;
+  const lineEnd = Math.max(...along) + 1;
+  const lines = [];
+  for (let offset = Math.min(...across) + spacing / 2 + phase; offset < Math.max(...across); offset += spacing) {
+    const from = point(normal.x * offset + direction.x * lineStart, normal.y * offset + direction.y * lineStart);
+    const to = point(normal.x * offset + direction.x * lineEnd, normal.y * offset + direction.y * lineEnd);
+    lines.push(...region.clip(inset, from, to));
+  }
+  if (!snake) return lines;
+  const paths = [];
+  let current = null;
+  const reach = spacing * 5;
+  for (const [first, second] of lines) {
+    if (current) {
+      const tail = current[current.length - 1];
+      const [entry, exit] = Math.hypot(tail.x - first.x, tail.y - first.y) <= Math.hypot(tail.x - second.x, tail.y - second.y)
+        ? [first, second]
+        : [second, first];
+      if (Math.hypot(tail.x - entry.x, tail.y - entry.y) <= reach) {
+        current.push(entry, exit);
+        continue;
+      }
+      paths.push(current);
+    }
+    current = [first, second];
+  }
+  if (current) paths.push(current);
+  return paths;
+}
+
 function concentricInfill(config, inset) {
   const paths = [];
+  if (config.region) {
+    for (let offset = inset + config.lineWidth / 2; paths.length < 400; offset += config.lineWidth) {
+      const loops = config.region.loops(offset).filter((loop) => loop.length > 3);
+      if (!loops.length) break;
+      paths.push(...loops);
+    }
+    return paths;
+  }
   for (let offset = inset + config.lineWidth / 2; ; offset += config.lineWidth) {
     if (config.shape === "cylinder" && config.width / 2 - offset <= 0) break;
     const outline = config.shape === "cylinder"
@@ -167,6 +216,12 @@ function clipInfillSegment(config, inset, start, end) {
     point(start.x + dx * minT, start.y + dy * minT),
     point(start.x + dx * maxT, start.y + dy * maxT),
   ];
+}
+
+function clipInfillSegments(config, inset, start, end) {
+  if (config.region) return config.region.clip(inset, start, end);
+  const clipped = clipInfillSegment(config, inset, start, end);
+  return clipped ? [clipped] : [];
 }
 
 function connectLineSegments(segments) {
@@ -233,8 +288,7 @@ function honeycombInfill(config, inset, density, angleDegrees) {
         const edgeKey = startKey < endKey ? `${startKey}|${endKey}` : `${endKey}|${startKey}`;
         if (seenEdges.has(edgeKey)) continue;
         seenEdges.add(edgeKey);
-        const clipped = clipInfillSegment(config, inset, start, end);
-        if (clipped) segments.push(clipped);
+        segments.push(...clipInfillSegments(config, inset, start, end));
       }
     }
   }
@@ -337,8 +391,7 @@ function gyroidInfill(config, inset, angleDegrees, density, workBudget, z) {
         });
       }
       for (const [first, second] of pairs) {
-        const clipped = clipInfillSegment(config, inset, first.point, second.point);
-        if (clipped) segments.push(clipped);
+        segments.push(...clipInfillSegments(config, inset, first.point, second.point));
       }
     }
   }
@@ -346,15 +399,18 @@ function gyroidInfill(config, inset, angleDegrees, density, workBudget, z) {
 }
 
 function sparseInfill(config, inset, angleDegrees, spacing, layerIndex, workBudget, z) {
-  const rectangular = (angle, lineSpacing = spacing) => rectangleInfill(
-    config.width, config.depth, inset, angle, lineSpacing, false,
+  const rectangular = (angle, lineSpacing = spacing) => (config.region
+    ? regionScan(config.region, inset, angle, lineSpacing, false)
+    : rectangleInfill(config.width, config.depth, inset, angle, lineSpacing, false)
   ).map((points) => ({ type: "sparse-infill", points }));
   const circular = (angle, lineSpacing = spacing) => cylinderInfill(
     config.width / 2, inset, angle, lineSpacing, false,
   ).map((points) => ({ type: "sparse-infill", points }));
-  const phasedScans = (angle, shift, lineSpacing = spacing) => (config.shape === "cylinder"
-    ? cylinderInfill(config.width / 2, inset, angle, lineSpacing, false, shift)
-    : rectangleInfill(config.width, config.depth, inset, angle, lineSpacing, false, shift))
+  const phasedScans = (angle, shift, lineSpacing = spacing) => (config.region
+    ? regionScan(config.region, inset, angle, lineSpacing, false, shift)
+    : config.shape === "cylinder"
+      ? cylinderInfill(config.width / 2, inset, angle, lineSpacing, false, shift)
+      : rectangleInfill(config.width, config.depth, inset, angle, lineSpacing, false, shift))
     .map((points) => ({ type: "sparse-infill", points }));
   const scans = config.shape === "cylinder" ? circular : rectangular;
 
@@ -454,11 +510,15 @@ function resolveCustomGcode(source, config, name) {
 }
 
 function validate(config) {
-  const shape = String(config.shape);
-  if (!["cube", "cuboid", "cylinder"].includes(shape)) throw new Error("Choose cube, cuboid, or cylinder.");
-  const width = ranged(shape === "cylinder" ? config.diameter : config.width, shape === "cylinder" ? "Diameter" : "Width", 2, 200);
-  const depth = shape === "cube" ? width : ranged(shape === "cylinder" ? config.diameter : config.depth, shape === "cylinder" ? "Diameter" : "Depth", 2, 200);
-  const height = ranged(config.height, "Height", 0.2, 200);
+  const sampleType = config.sampleType === "mechanical" ? "mechanical" : "primitive";
+  const specimen = sampleType === "mechanical"
+    ? mechanicalSpecimen(String(config.mechanicalSample), String(config.mechanicalStandard ?? "astm"))
+    : null;
+  const shape = specimen ? specimen.key : String(config.shape);
+  if (!specimen && !["cube", "cuboid", "cylinder"].includes(shape)) throw new Error("Choose cube, cuboid, or cylinder.");
+  const width = specimen ? specimen.length : ranged(shape === "cylinder" ? config.diameter : config.width, shape === "cylinder" ? "Diameter" : "Width", 2, 200);
+  const depth = specimen ? specimen.width : shape === "cube" ? width : ranged(shape === "cylinder" ? config.diameter : config.depth, shape === "cylinder" ? "Diameter" : "Depth", 2, 200);
+  const height = specimen ? specimen.thickness : ranged(config.height, "Height", 0.2, 200);
   const wallCount = ranged(config.wallCount, "Wall count", 0, 10);
   if (!Number.isInteger(wallCount)) throw new Error("Wall count must be a whole number.");
   const lineWidth = ranged(config.lineWidth, "Line width", 0.1, 3);
@@ -615,9 +675,12 @@ function validate(config) {
   const innermostWallInset = wallCount > 0
     ? lineWidth / 2 + (wallCount - 1) * widestWallSpacing
     : 0;
-  if (wallCount > 0 && innermostWallInset * 2 >= Math.min(width, depth)) {
+  if (wallCount > 0 && innermostWallInset * 2 >= (specimen ? specimen.minFeature : Math.min(width, depth))) {
     throw new Error("The selected wall count and line width are too large for this specimen.");
   }
+  values.sampleType = sampleType;
+  values.specimen = specimen;
+  values.region = specimen ? createPolygonRegion(specimen.outline, skirtMargin + lineWidth + 2) : null;
   return values;
 }
 
@@ -647,6 +710,10 @@ function makeLayerPaths(config, layerIndex, z, totalLayers, workBudget) {
   if (layerIndex === 0) {
     for (let loop = config.skirtLoops - 1; loop >= 0; loop -= 1) {
       const inset = -(config.skirtDistance + loop * wallSpacing);
+      if (config.region) {
+        for (const points of config.region.loops(inset)) paths.push({ type: "skirt", points });
+        continue;
+      }
       const outline = isCylinder
         ? circlePath(outerRadius - inset)
         : rectanglePath(config.width - inset * 2, config.depth - inset * 2, 0);
@@ -656,6 +723,10 @@ function makeLayerPaths(config, layerIndex, z, totalLayers, workBudget) {
 
   for (let wall = 0; wall < config.wallCount; wall += 1) {
     const inset = config.lineWidth / 2 + wall * wallSpacing;
+    if (config.region) {
+      for (const points of config.region.loops(inset)) paths.push({ type: "wall", points });
+      continue;
+    }
     const outline = isCylinder
       ? circlePath(outerRadius - inset)
       : rectanglePath(config.width, config.depth, inset);
@@ -672,7 +743,9 @@ function makeLayerPaths(config, layerIndex, z, totalLayers, workBudget) {
   if (isSolid) {
     const infill = config.solidPattern === "concentric"
       ? concentricInfill(config, inset)
-      : isCylinder
+      : config.region
+        ? regionScan(config.region, inset, infillAngle, config.lineWidth, true)
+        : isCylinder
         ? cylinderInfill(outerRadius, inset, infillAngle, config.lineWidth, true)
         : rectangleInfill(config.width, config.depth, inset, infillAngle, config.lineWidth, true);
     for (const points of infill) paths.push({ type: "solid-infill", points });
@@ -714,7 +787,7 @@ export function generateGcode(input) {
   const paths = layerPaths.flat();
   const lines = [
     "; Primitive tilting-nozzle test specimen",
-    `; Shape: ${config.shape}; dimensions: ${format(config.width)} x ${format(config.depth)} x ${format(config.height)} mm`,
+    `; Shape: ${config.specimen ? config.specimen.label : config.shape}; dimensions: ${format(config.width)} x ${format(config.depth)} x ${format(config.height)} mm`,
     `; Walls: ${config.wallCount}; sparse infill: ${config.sparsePattern} at ${format(config.infillPercent, 0)}%; solid infill: ${config.solidPattern}; top/bottom layers: ${config.topLayers}/${config.bottomLayers}; infill-to-wall overlap: ${format(config.infillOverlap, 0)}%`,
     `; Priming: purge lines ${config.purgeLine ? "on" : "off"} (${format(config.minimumPurgeLength, 0)} mm minimum each); skirt loops ${config.skirtLoops}; extrusion multiplier ${format(config.purgeMultiplier * 100, 0)}%`,
     `; Infill base angle: ${format(config.infillAngle, 1)} degrees`,
@@ -837,6 +910,9 @@ export function generateGcode(input) {
     metrics: { layers: layerHeights.length, pathCount: paths.length, filamentLength, filamentVolume: filamentLength * filamentArea },
     preview: {
       shape: config.shape,
+      sampleType: config.sampleType,
+      sampleLabel: config.specimen?.label ?? null,
+      outline: config.specimen?.outline ?? null,
       width: config.width,
       depth: config.depth,
       height: config.height,

@@ -1,5 +1,6 @@
-import { generateGcode, minimumLayerHeight } from "./gcode.mjs";
-import { createScenePreview } from "./preview.mjs?v=toolpath-colors-2";
+import { generateGcode, minimumLayerHeight } from "./gcode.mjs?v=mechanical-1";
+import { mechanicalSpecimen } from "./mechanical.mjs?v=mechanical-1";
+import { createScenePreview } from "./preview.mjs?v=mechanical-1";
 
 const form = document.querySelector("#generator-form");
 const errorBox = document.querySelector("#form-error");
@@ -13,6 +14,8 @@ const layerSlider = document.querySelector("#preview-layer-slider");
 const layerLabel = document.querySelector("#preview-layer-label");
 const layerTicks = document.querySelector("#preview-layer-ticks");
 const pathColorToggle = document.querySelector("#path-color-toggle");
+const solidViewToggle = document.querySelector("#solid-view-toggle");
+const solidViewWarning = document.querySelector("#solid-view-warning");
 let generated = null;
 
 function readConfig() {
@@ -25,7 +28,11 @@ function readConfig() {
 }
 
 function selectedShape() {
-  return form.elements.namedItem("shape").value;
+  return form.elements.namedItem("shape").value || "cuboid";
+}
+
+function selectedSampleType() {
+  return form.elements.namedItem("sampleType").value;
 }
 
 function validateOutputFilename() {
@@ -39,6 +46,12 @@ function validateOutputFilename() {
 
 function updateShapeFields() {
   const shape = selectedShape();
+  const mechanical = selectedSampleType() === "mechanical";
+  form.querySelector("#primitive-options").hidden = mechanical;
+  form.querySelector("#mechanical-options").hidden = !mechanical;
+  form.querySelectorAll('input[name="shape"]').forEach((input) => { input.disabled = mechanical; });
+  form.querySelectorAll('[name="mechanicalSample"], [name="mechanicalStandard"]').forEach((input) => { input.disabled = !mechanical; });
+  form.elements.namedItem("height").disabled = mechanical;
   for (const [name, visible] of [
     ["width", shape !== "cylinder"],
     ["depth", shape === "cuboid"],
@@ -46,7 +59,43 @@ function updateShapeFields() {
   ]) {
     const field = form.querySelector(`[data-shape-field="${name}"]`);
     field.hidden = !visible;
-    field.querySelector("input").disabled = !visible;
+    field.querySelector("input").disabled = !visible || mechanical;
+  }
+  if (mechanical) {
+    const specimen = mechanicalSpecimen(
+      form.elements.namedItem("mechanicalSample").value,
+      form.elements.namedItem("mechanicalStandard").value,
+    );
+    document.querySelector("#mechanical-dimensions").textContent = describeSpecimen(specimen);
+  }
+}
+
+function describeSpecimen(specimen) {
+  const { spec } = specimen;
+  const overall = `${specimen.length} × ${specimen.width} × ${specimen.thickness} mm overall`;
+  if (specimen.key === "tensile") {
+    return `${spec.label}: ${overall}; narrow section ${spec.narrowWidth} × ${spec.narrowLength} mm, shoulder radius ${spec.radius} mm, gauge length ${spec.gauge} mm, grip distance ${spec.grip} mm.`;
+  }
+  if (specimen.key === "flexural") {
+    return `${spec.label}: ${overall}; 16:1 support span ${spec.span} mm.`;
+  }
+  return `${spec.label}: ${overall}; ${spec.notchAngle}° notch ${spec.notchDepth} mm deep, ${spec.notchRadius} mm tip radius, ${(spec.width - spec.notchDepth).toFixed(2)} mm remaining.`;
+}
+
+let primitiveInfillPercent = null;
+function applyMechanicalDefaults(event) {
+  const infill = form.elements.namedItem("infillPercent");
+  const name = event.target?.name;
+  if (name === "sampleType") {
+    if (selectedSampleType() === "mechanical") {
+      primitiveInfillPercent = infill.value;
+      infill.value = "100";
+    } else if (primitiveInfillPercent !== null) {
+      infill.value = primitiveInfillPercent;
+      primitiveInfillPercent = null;
+    }
+  } else if (name === "mechanicalSample") {
+    infill.value = "100";
   }
 }
 
@@ -141,6 +190,7 @@ form.addEventListener("change", (event) => {
     form.elements.namedItem("centerX").value = String(Number(form.elements.namedItem("centerX").value) + offset * bedWidth / 2);
     form.elements.namedItem("centerY").value = String(Number(form.elements.namedItem("centerY").value) + offset * bedDepth / 2);
   }
+  applyMechanicalDefaults(event);
   updateShapeFields();
   updateBedControls();
   invalidate();
@@ -164,6 +214,7 @@ form.addEventListener("submit", (event) => {
     generated = generateGcode(readConfig());
     preview.update(generated.preview);
     preview.setColorByType(pathColorToggle.checked);
+    preview.setSolidView(solidViewToggle.checked);
     const layers = generated.preview.allLayers;
     const lastIndex = layers.length - 1;
     const middleIndex = Math.floor(lastIndex / 2);
@@ -181,7 +232,7 @@ form.addEventListener("submit", (event) => {
     });
     layerSlider.disabled = false;
     updateLayerPreview(lastIndex);
-    document.querySelector("#stat-shape").textContent = `${generated.preview.shape} · ${generated.preview.width} × ${generated.preview.depth} × ${generated.preview.height} mm`;
+    document.querySelector("#stat-shape").textContent = `${generated.preview.sampleLabel || generated.preview.shape} · ${generated.preview.width} × ${generated.preview.depth} × ${generated.preview.height} mm`;
     document.querySelector("#stat-layers").textContent = String(generated.metrics.layers).padStart(2, "0");
     document.querySelector("#stat-paths").textContent = String(generated.metrics.pathCount);
     document.querySelector("#stat-filament").textContent = `${(generated.metrics.filamentLength / 1000).toFixed(2)} m`;
@@ -214,6 +265,13 @@ function updateLayerPreview(value) {
 }
 
 layerSlider.addEventListener("input", () => updateLayerPreview(layerSlider.value));
+solidViewToggle.addEventListener("change", () => {
+  if (solidViewToggle.checked && !window.confirm("Simulated solid draws every bead with shading and may slow the preview and this whole page, especially for tall or dense specimens. Turn it on anyway?")) {
+    solidViewToggle.checked = false;
+  }
+  solidViewWarning.hidden = !solidViewToggle.checked;
+  preview.setSolidView(solidViewToggle.checked);
+});
 pathColorToggle.addEventListener("change", () => {
   preview.setColorByType(pathColorToggle.checked);
   document.querySelector(".preview-legend").classList.toggle("is-uniform", !pathColorToggle.checked);

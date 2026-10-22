@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { generateGcode, minimumLayerHeight } from "../src/gcode.mjs";
+import { mechanicalSpecimen } from "../src/mechanical.mjs";
 
 const baseConfig = {
   shape: "cuboid",
@@ -122,6 +123,45 @@ test("100% sparse infill uses the solid infill pattern", () => {
   const types = new Set(result.preview.allLayers.flatMap((layer) => layer.paths.map((path) => path.type)));
   assert.ok(types.has("solid-infill"));
   assert.ok(!types.has("sparse-infill"));
+});
+
+test("mechanical samples follow ASTM and ISO dimensions", () => {
+  const expected = {
+    "tensile astm": [165, 19, 3.2],
+    "tensile iso": [170, 20, 4],
+    "flexural astm": [127, 12.7, 3.2],
+    "flexural iso": [80, 10, 4],
+    "impact astm": [63.5, 12.7, 3.2],
+    "impact iso": [80, 10, 4],
+  };
+  for (const [key, [length, width, thickness]] of Object.entries(expected)) {
+    const [sample, standard] = key.split(" ");
+    const specimen = mechanicalSpecimen(sample, standard);
+    assert.equal(specimen.length, length);
+    assert.equal(specimen.width, width);
+    assert.equal(specimen.thickness, thickness);
+    const xs = specimen.outline.map((p) => p.x);
+    const ys = specimen.outline.map((p) => p.y);
+    assert.ok(Math.abs(Math.max(...xs) - Math.min(...xs) - length) < 0.01);
+    assert.ok(Math.abs(Math.max(...ys) - Math.min(...ys) - width) < 0.01);
+  }
+});
+
+test("mechanical samples generate walls and solid infill at 100% density", () => {
+  for (const mechanicalSample of ["tensile", "flexural", "impact"]) {
+    const result = generateGcode({
+      ...baseConfig,
+      sampleType: "mechanical",
+      mechanicalSample,
+      mechanicalStandard: "astm",
+      infillPercent: 100,
+    });
+    const types = new Set(result.preview.allLayers.flatMap((layer) => layer.paths.map((path) => path.type)));
+    assert.ok(types.has("wall"));
+    assert.ok(types.has("solid-infill"));
+    assert.ok(!types.has("sparse-infill"));
+    assert.equal(result.preview.sampleType, "mechanical");
+  }
 });
 
 test("supports all sparse infill patterns and a wall-free sparse specimen", () => {
