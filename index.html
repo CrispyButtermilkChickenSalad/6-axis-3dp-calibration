@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#f5f2f8">
     <title>Tilting nozzle · primitive generator</title>
-    <link rel="stylesheet" href="./styles.css?v=mechanical-1">
-    <script type="module" src="./src/app.mjs?v=mechanical-1"></script>
+    <link rel="stylesheet" href="./styles.css?v=mechanical-2">
+    <script type="module" src="./src/app.mjs?v=mechanical-2"></script>
   </head>
   <body>
     <main class="shell">
@@ -56,10 +56,21 @@
                   <label class="pattern-option"><input type="radio" name="mechanicalSample" value="impact"><span class="pattern-art" aria-hidden="true"><svg viewBox="0 0 100 54"><path class="sample-fill" d="M14 18H46L50 29 54 18H86V38H14Z"/><path class="pattern-arrow" d="M50 48v-8m-2.5 2.5L50 40l2.5 2.5"/></svg></span><span class="pattern-name">Impact</span><span class="orientation-note">Bar with a 45° V-notch (Notch A) for Izod testing.</span></label>
                 </div>
               </fieldset>
+              <fieldset class="visual-choice-group sample-orientation-group">
+                <legend>Sample orientation <span>Which face lies on the bed</span></legend>
+                <div class="orientation-options">
+                  <label class="pattern-option"><input type="radio" name="mechanicalOrientation" value="flat" checked><span class="pattern-art" aria-hidden="true"><svg viewBox="0 0 100 54"><path class="sample-fill" d="M10 34H90V44H10Z"/><path class="pattern-arrow" d="M10 50H90"/></svg></span><span class="pattern-name">Flat</span><span class="orientation-note">Thickness along Z.</span></label>
+                  <label class="pattern-option"><input type="radio" name="mechanicalOrientation" value="side"><span class="pattern-art" aria-hidden="true"><svg viewBox="0 0 100 54"><path class="sample-fill" d="M10 20H90V44H10Z"/><path class="pattern-arrow" d="M10 50H90"/></svg></span><span class="pattern-name">Side</span><span class="orientation-note">On its edge, width along Z.</span></label>
+                  <label class="pattern-option"><input type="radio" name="mechanicalOrientation" value="upright"><span class="pattern-art" aria-hidden="true"><svg viewBox="0 0 100 54"><path class="sample-fill" d="M42 4H58V44H42Z"/><path class="pattern-arrow" d="M30 50H70"/></svg></span><span class="pattern-name">Upright</span><span class="orientation-note">Standing on its end, length along Z.</span></label>
+                </div>
+              </fieldset>
               <div class="field-grid mechanical-standard-grid">
                 <label class="field"><span>Dimension standard</span><select name="mechanicalStandard"><option value="astm">ASTM</option><option value="iso">ISO</option></select></label>
+                <label class="field"><span>Number of samples <small>1–10</small></span><input name="sampleCount" type="number" min="1" max="10" step="1" value="1"></label>
+                <label class="field"><span>Sample spacing <small>mm</small></span><input name="sampleSpacing" type="number" min="0" max="100" step="0.5" value="4"></label>
               </div>
               <p class="field-hint" id="mechanical-dimensions"></p>
+              <p class="field-hint" id="mechanical-layout"></p>
             </div>
 
             <div class="section-label"><span>WALLS + INFILL</span><span class="rule"></span></div>
@@ -149,7 +160,13 @@
               <div class="field-grid">
                 <label class="field"><span>Firmware</span><select name="firmware"><option value="generic">Generic / Marlin-style</option><option value="marlin">Marlin</option><option value="klipper">Klipper</option><option value="reprap">RepRapFirmware</option></select></label>
                 <label class="field"><span>Machine axes</span><select name="axisCount"><option value="3">3-axis</option><option value="4" selected>4-axis</option><option value="5">5-axis</option><option value="6">6-axis</option></select></label>
-                <label class="field"><span>Rotary axis / rotation about</span><select name="tiltAxis"><option value="A">A / X-axis</option><option value="B">B / Y-axis</option></select></label>
+                <fieldset class="field axis-checks" id="rotary-axes">
+                  <legend>Rotary axis / rotation about</legend>
+                  <label class="check-field"><input name="rotaryA" type="checkbox"><span>A / X-axis</span></label>
+                  <label class="check-field"><input name="rotaryB" type="checkbox"><span>B / Y-axis</span></label>
+                  <label class="check-field"><input name="rotaryC" type="checkbox"><span>C / Z-axis</span></label>
+                </fieldset>
+                <label class="field" id="tilt-axis-field"><span>Absolute tilt about</span><select name="tiltAxis"><option value="A">A / X-axis</option><option value="B">B / Y-axis</option></select></label>
                 <label class="field"><span>Rotary C mode</span><select name="rotaryCMode"><option value="tool">Tool rotation</option><option value="bed">Bed rotation</option></select></label>
                 <label class="field"><span>Klipper extruder name <small>optional</small></span><input name="extruderName" type="text" maxlength="64" placeholder="extruder"></label>
                 <label class="field"><span>Bed shape</span><select name="bedShape"><option value="rectangular">Rectangular</option><option value="circular">Circular</option></select></label>

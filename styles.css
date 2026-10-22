@@ -71,6 +71,14 @@ h1 span { color: var(--green); }
 .field input:focus, .field select:focus, .field textarea:focus { border-color: #a48bbb; box-shadow: 0 0 0 3px rgba(115, 80, 151, .13); }
 .field input:disabled, .field select:disabled { opacity: .56; cursor: not-allowed; }
 .field.is-disabled { opacity: .58; }
+.axis-checks { min-width: 0; margin: 0; padding: 0; border: 0; display: grid; gap: 4px; }
+.axis-checks legend { padding: 0; margin-bottom: 6px; font-size: 10px; color: #59645c; }
+.axis-checks .check-field { min-height: 22px; }
+.axis-checks.is-disabled, .visual-choice-group.is-disabled { opacity: .5; }
+.axis-checks input:disabled + span { cursor: not-allowed; }
+.orientation-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
+.orientation-options .pattern-art svg { height: 54px; max-width: 120px; }
+.orientation-options .pattern-art svg .sample-fill { fill: rgba(146, 112, 176, .2); }
 .field textarea { resize: vertical; font-size: 10px; line-height: 1.55; }
 .field[hidden] { display: none; }
 .inline-inputs { display: flex; gap: 6px; }
@@ -322,3 +330,4 @@ body[data-theme="dark"] .preview-note p { color: #d0b990; }
 body[data-theme="dark"] .preview-wrap { background: #211c28; }
 body[data-theme="dark"] .code-details pre { background: #17141b; }
 body[data-theme="dark"] .form-error { border-color: #744c43; background: #382521; color: #f0b9a1; }
+body[data-theme="dark"] .axis-checks legend { color: #b7aac2; }

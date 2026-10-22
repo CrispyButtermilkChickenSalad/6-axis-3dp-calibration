@@ -215,6 +215,12 @@ export function createScenePreview(canvas) {
     context.stroke();
     context.restore();
 
+    for (const body of model.bodies ?? [{ x: 0, y: 0 }]) {
+    const centerX = model.centerX + body.x;
+    const centerY = model.centerY + body.y;
+    const halfX = (model.sampleWidth ?? model.width) / 2;
+    const halfY = (model.sampleDepth ?? model.depth) / 2;
+    const corners = [[-halfX, -halfY], [halfX, -halfY], [halfX, halfY], [-halfX, halfY]];
     if (model.outline) {
       const points = model.outline;
       const bottom = points.map((p) => screen(centerX + p.x, centerY + p.y, 0));
@@ -271,6 +277,7 @@ export function createScenePreview(canvas) {
       polygon(top, colors.top);
       line([...top, top[0]], colors.sideDark, 1);
     }
+    }
 
     if (model.allLayers) {
       const activeLayerNumber = model.activeLayerNumber;
@@ -298,7 +305,7 @@ export function createScenePreview(canvas) {
     context.fillStyle = colors.text;
     context.textAlign = "left";
     context.font = "10px Segoe UI, sans-serif";
-    context.fillText(`${model.viewLabel ?? "LAST LAYER"} · Z ${topZ.toFixed(2)} MM · ${model.tiltAngle}° ${model.tiltAxis}-AXIS TILT`, 12, height - 11);
+    context.fillText(`${model.viewLabel ?? "LAST LAYER"} · Z ${topZ.toFixed(2)} MM · ${model.axisCount < 4 ? "NO TILT (3-AXIS)" : `${model.tiltAngle}° ${model.tiltAxis}-AXIS TILT`}`, 12, height - 11);
   }
 
   function drawDirectionalPath(ctx, points, color) {

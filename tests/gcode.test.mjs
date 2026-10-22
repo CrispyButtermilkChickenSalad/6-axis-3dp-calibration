@@ -587,3 +587,34 @@ test("requires a Klipper extruder name for a non-default tool", () => {
   const result = generateGcode({ ...baseConfig, firmware: "klipper", toolIndex: 1, extruderName: "extruder1" });
   assert.match(result.text, /SET_PRESSURE_ADVANCE EXTRUDER=extruder1 ADVANCE=0.04/);
 });
+
+test("3-axis machines generate with no rotary words even when a tilt is entered", () => {
+  const result = generateGcode({ ...baseConfig, axisCount: 3, tiltAngle: 25, angleMode: "adaptive" });
+  assert.doesNotMatch(result.text, /\b[ABC]-?\d/);
+  assert.equal(result.preview.tiltAngle, 0);
+  assert.match(result.text, /no rotary axes/);
+});
+
+test("mechanical samples support orientation, count, spacing and one group skirt", () => {
+  const flat = { ...baseConfig, sampleType: "mechanical", mechanicalSample: "flexural", mechanicalStandard: "astm", infillPercent: 100, wallCount: 2, height: 3.2, skirtLoops: 1 };
+  const single = generateGcode(flat);
+  assert.equal(single.preview.height, 3.2);
+  const four = generateGcode({ ...flat, sampleCount: 4, sampleSpacing: 4 });
+  assert.equal(four.preview.sampleCount, 4);
+  assert.equal(four.preview.bodies.length, 4);
+  const skirts = four.preview.allLayers[0].paths.filter((path) => path.type === "skirt");
+  assert.equal(skirts.length, 1);
+  const xs = skirts[0].points.map((p) => p.x);
+  assert.ok(Math.max(...xs) - Math.min(...xs) > four.preview.sampleWidth);
+  const side = generateGcode({ ...flat, mechanicalOrientation: "side" });
+  assert.ok(Math.abs(side.preview.height - 12.7) < 1e-6);
+  const upright = generateGcode({ ...flat, mechanicalOrientation: "upright" });
+  assert.ok(Math.abs(upright.preview.height - 127) < 1e-6);
+});
+
+test("rejects more mechanical samples than fit on the bed", () => {
+  assert.throws(() => generateGcode({
+    ...baseConfig, sampleType: "mechanical", mechanicalSample: "tensile", mechanicalStandard: "astm",
+    infillPercent: 100, sampleCount: 10, sampleSpacing: 4,
+  }), /At most \d+ fit/);
+});

@@ -1,6 +1,7 @@
-import { generateGcode, minimumLayerHeight } from "./gcode.mjs?v=mechanical-1";
-import { mechanicalSpecimen } from "./mechanical.mjs?v=mechanical-1";
-import { createScenePreview } from "./preview.mjs?v=mechanical-1";
+import { generateGcode, minimumLayerHeight } from "./gcode.mjs?v=mechanical-2";
+import { mechanicalSpecimen } from "./mechanical.mjs?v=mechanical-2";
+import { orientedSpecimen } from "./orientation.mjs?v=mechanical-2";
+import { createScenePreview } from "./preview.mjs?v=mechanical-2";
 
 const form = document.querySelector("#generator-form");
 const errorBox = document.querySelector("#form-error");
@@ -24,7 +25,52 @@ function readConfig() {
   form.querySelectorAll('input[type="number"]').forEach((input) => {
     config[input.name] = input.value === "" ? null : Number(input.value);
   });
+  config.orientation = form.elements.namedItem("orientation").value;
+  config.angleMode = form.elements.namedItem("angleMode").value;
+  const axisCount = Number(form.elements.namedItem("axisCount").value);
+  const rotaryA = form.elements.namedItem("rotaryA").checked;
+  const rotaryB = form.elements.namedItem("rotaryB").checked;
+  config.tiltAxis = axisCount < 4 ? "A" : axisCount === 4 ? (rotaryB && !rotaryA ? "B" : "A") : form.elements.namedItem("tiltAxis").value;
   return config;
+}
+
+function updateAxisControls(event) {
+  const axisCount = Number(form.elements.namedItem("axisCount").value);
+  const checks = { A: form.elements.namedItem("rotaryA"), B: form.elements.namedItem("rotaryB"), C: form.elements.namedItem("rotaryC") };
+  const tiltAxis = form.elements.namedItem("tiltAxis");
+  const name = event?.target?.name;
+  if (name === "rotaryA" || name === "rotaryB") {
+    tiltAxis.value = name === "rotaryA" ? "A" : "B";
+  }
+  if (axisCount === 4) {
+    checks.A.checked = tiltAxis.value === "A";
+    checks.B.checked = tiltAxis.value === "B";
+    checks.C.checked = false;
+  } else {
+    checks.A.checked = axisCount >= 5;
+    checks.B.checked = axisCount >= 5;
+    checks.C.checked = axisCount >= 6;
+  }
+  checks.A.disabled = axisCount !== 4;
+  checks.B.disabled = axisCount !== 4;
+  checks.C.disabled = true;
+  document.querySelector("#rotary-axes").classList.toggle("is-disabled", axisCount < 4);
+  tiltAxis.disabled = axisCount < 5;
+  document.querySelector("#tilt-axis-field").classList.toggle("is-disabled", axisCount < 5);
+  const noRotary = axisCount < 4;
+  form.elements.namedItem("tiltAngle").disabled = noRotary;
+  form.elements.namedItem("tiltAngle").closest("label").classList.toggle("is-disabled", noRotary);
+  ["orientation", "angleMode"].forEach((group) => {
+    const radios = form.querySelectorAll(`input[name="${group}"]`);
+    radios.forEach((radio) => { radio.disabled = noRotary; });
+    radios[0].closest("fieldset").classList.toggle("is-disabled", noRotary);
+  });
+  if (noRotary) form.querySelector('input[name="angleMode"][value="absolute"]').checked = true;
+  ["aMin", "aMax", "bMin", "bMax"].forEach((limit) => {
+    const input = form.elements.namedItem(limit);
+    input.disabled = noRotary;
+    input.closest("label").classList.toggle("is-disabled", noRotary);
+  });
 }
 
 function selectedShape() {
@@ -50,7 +96,7 @@ function updateShapeFields() {
   form.querySelector("#primitive-options").hidden = mechanical;
   form.querySelector("#mechanical-options").hidden = !mechanical;
   form.querySelectorAll('input[name="shape"]').forEach((input) => { input.disabled = mechanical; });
-  form.querySelectorAll('[name="mechanicalSample"], [name="mechanicalStandard"]').forEach((input) => { input.disabled = !mechanical; });
+  form.querySelectorAll('[name="mechanicalSample"], [name="mechanicalStandard"], [name="mechanicalOrientation"], [name="sampleCount"], [name="sampleSpacing"]').forEach((input) => { input.disabled = !mechanical; });
   form.elements.namedItem("height").disabled = mechanical;
   for (const [name, visible] of [
     ["width", shape !== "cylinder"],
@@ -67,6 +113,9 @@ function updateShapeFields() {
       form.elements.namedItem("mechanicalStandard").value,
     );
     document.querySelector("#mechanical-dimensions").textContent = describeSpecimen(specimen);
+    const oriented = orientedSpecimen(specimen, form.elements.namedItem("mechanicalOrientation").value);
+    document.querySelector("#mechanical-layout").textContent =
+      `${form.elements.namedItem("mechanicalOrientation").value} orientation: footprint ${oriented.width.toFixed(1)} × ${oriented.depth.toFixed(1)} mm, build height ${oriented.height.toFixed(1)} mm per sample. Samples are arranged automatically to fit the bed, skirt and purge line, with one skirt around the whole group.`;
   }
 }
 
@@ -136,8 +185,8 @@ function updateClearanceHint() {
   const config = readConfig();
   const hint = document.querySelector("#clearance-hint");
   try {
-    const minimum = minimumLayerHeight(config.tipDiameter, config.tiltAngle);
-    hint.textContent = `Collision-safe minimum: ${minimum.toFixed(3)} mm at ${config.tiltAngle}° tilt. Layer and first-layer heights must meet this value.`;
+    const minimum = minimumLayerHeight(config.tipDiameter, form.elements.namedItem("axisCount").value < 4 ? 0 : config.tiltAngle);
+    hint.textContent = `Collision-safe minimum: ${minimum.toFixed(3)} mm at ${form.elements.namedItem("axisCount").value < 4 ? 0 : config.tiltAngle}° tilt. Layer and first-layer heights must meet this value.`;
     hint.classList.toggle("is-warning", config.layerHeight < minimum || config.firstLayerHeight < minimum);
   } catch {
     hint.textContent = "Enter valid nozzle-tip and tilt values to calculate the collision-safe layer-height minimum.";
@@ -193,6 +242,7 @@ form.addEventListener("change", (event) => {
   applyMechanicalDefaults(event);
   updateShapeFields();
   updateBedControls();
+  updateAxisControls(event);
   invalidate();
 });
 form.addEventListener("input", invalidate);
@@ -232,7 +282,10 @@ form.addEventListener("submit", (event) => {
     });
     layerSlider.disabled = false;
     updateLayerPreview(lastIndex);
-    document.querySelector("#stat-shape").textContent = `${generated.preview.sampleLabel || generated.preview.shape} · ${generated.preview.width} × ${generated.preview.depth} × ${generated.preview.height} mm`;
+    const p = generated.preview;
+    const count = p.sampleCount > 1 ? ` × ${p.sampleCount}` : "";
+    const orient = p.sampleType === "mechanical" ? ` (${p.sampleOrientation})` : "";
+    document.querySelector("#stat-shape").textContent = `${p.sampleLabel || p.shape}${count}${orient} · ${p.sampleWidth} × ${p.sampleDepth} × ${p.height} mm`;
     document.querySelector("#stat-layers").textContent = String(generated.metrics.layers).padStart(2, "0");
     document.querySelector("#stat-paths").textContent = String(generated.metrics.pathCount);
     document.querySelector("#stat-filament").textContent = `${(generated.metrics.filamentLength / 1000).toFixed(2)} m`;
@@ -294,5 +347,6 @@ outputFilename.addEventListener("input", validateOutputFilename);
 
 updateShapeFields();
 updateBedControls();
+updateAxisControls();
 updateClearanceHint();
 validateOutputFilename();

@@ -3,6 +3,7 @@ const MAX_LAYERS = 2000;
 
 import { createPolygonRegion } from "./region.mjs";
 import { mechanicalSpecimen } from "./mechanical.mjs";
+import { arrangeGrid, createRectangleRegion, orientedSpecimen } from "./orientation.mjs";
 
 export function minimumLayerHeight(tipDiameter, angleDegrees) {
   const tip = finite(tipDiameter, "Nozzle tip diameter");
@@ -516,9 +517,14 @@ function validate(config) {
     : null;
   const shape = specimen ? specimen.key : String(config.shape);
   if (!specimen && !["cube", "cuboid", "cylinder"].includes(shape)) throw new Error("Choose cube, cuboid, or cylinder.");
-  const width = specimen ? specimen.length : ranged(shape === "cylinder" ? config.diameter : config.width, shape === "cylinder" ? "Diameter" : "Width", 2, 200);
-  const depth = specimen ? specimen.width : shape === "cube" ? width : ranged(shape === "cylinder" ? config.diameter : config.depth, shape === "cylinder" ? "Diameter" : "Depth", 2, 200);
-  const height = specimen ? specimen.thickness : ranged(config.height, "Height", 0.2, 200);
+  const sampleOrientation = specimen ? String(config.mechanicalOrientation ?? "flat") : "flat";
+  const oriented = specimen ? orientedSpecimen(specimen, sampleOrientation) : null;
+  const sampleCount = specimen ? ranged(config.sampleCount ?? 1, "Sample count", 1, 10) : 1;
+  if (!Number.isInteger(sampleCount)) throw new Error("Sample count must be a whole number.");
+  const sampleSpacing = specimen ? ranged(config.sampleSpacing ?? 4, "Sample spacing", 0, 100) : 0;
+  const width = oriented ? oriented.width : ranged(shape === "cylinder" ? config.diameter : config.width, shape === "cylinder" ? "Diameter" : "Width", 2, 200);
+  const depth = oriented ? oriented.depth : shape === "cube" ? width : ranged(shape === "cylinder" ? config.diameter : config.depth, shape === "cylinder" ? "Diameter" : "Depth", 2, 200);
+  const height = oriented ? oriented.height : ranged(config.height, "Height", 0.2, 200);
   const wallCount = ranged(config.wallCount, "Wall count", 0, 10);
   if (!Number.isInteger(wallCount)) throw new Error("Wall count must be a whole number.");
   const lineWidth = ranged(config.lineWidth, "Line width", 0.1, 3);
@@ -536,7 +542,10 @@ function validate(config) {
   if (!Number.isInteger(bottomLayers) || !Number.isInteger(topLayers)) {
     throw new Error("Top and bottom layer counts must be whole numbers.");
   }
-  const tiltAngle = ranged(config.tiltAngle, "Tilt angle", -89, 89);
+  const axisCount = ranged(config.axisCount, "Machine axis count", 3, 6);
+  if (!Number.isInteger(axisCount)) throw new Error("Machine axis count must be a whole number from 3 to 6.");
+  const hasRotaryAxes = axisCount >= 4;
+  const tiltAngle = hasRotaryAxes ? ranged(config.tiltAngle, "Tilt angle", -89, 89) : 0;
   const tipDiameter = ranged(config.tipDiameter, "Nozzle tip diameter", 0.05, 10);
   const holeDiameter = ranged(config.holeDiameter, "Nozzle hole diameter", 0.05, 5);
   const layerHeight = ranged(config.layerHeight, "Layer height", 0.01, Math.min(2, holeDiameter * 1.5));
@@ -551,16 +560,13 @@ function validate(config) {
   }
   const extrusionMultiplier = ranged(config.extrusionMultiplier, "Extrusion multiplier", 1, 300) / 100;
   const filamentDiameter = ranged(config.filamentDiameter, "Filament diameter", 1, 4);
-  const axisCount = ranged(config.axisCount, "Machine axis count", 3, 6);
-  if (!Number.isInteger(axisCount)) throw new Error("Machine axis count must be a whole number from 3 to 6.");
-  const tiltAxis = String(config.tiltAxis).toUpperCase();
-  if (!["A", "B"].includes(tiltAxis)) throw new Error("Choose A or B as the tilt axis.");
-  const angleMode = String(config.angleMode);
+  const tiltAxis = hasRotaryAxes ? String(config.tiltAxis).toUpperCase() : "A";
+  if (hasRotaryAxes && !["A", "B"].includes(tiltAxis)) throw new Error("Choose A or B as the tilt axis.");
+  const angleMode = hasRotaryAxes ? String(config.angleMode) : "absolute";
   if (!["absolute", "adaptive"].includes(angleMode)) throw new Error("Choose absolute or adaptive angle mode.");
-  if (Math.abs(tiltAngle) > 0 && axisCount < 4) throw new Error("A non-zero tilt requires at least a 4-axis machine.");
   if (angleMode === "adaptive" && axisCount < 5) throw new Error("Adaptive angle requires at least a 5-axis machine.");
   if (!["klipper", "marlin", "reprap", "generic"].includes(config.firmware)) throw new Error("Choose a supported firmware dialect.");
-  const orientationOffsetValue = orientationOffset(String(config.orientation));
+  const orientationOffsetValue = orientationOffset(String(config.orientation ?? "trailing"));
   const bedShape = String(config.bedShape ?? "rectangular");
   if (!["rectangular", "circular"].includes(bedShape)) throw new Error("Choose a rectangular or circular bed.");
   const bedWidth = ranged(config.bedWidth, bedShape === "circular" ? "Bed diameter" : "Bed width X", 50, 2000);
@@ -583,8 +589,8 @@ function validate(config) {
   const purgeMultiplier = ranged(config.purgeMultiplier ?? 200, "Priming extrusion multiplier", 100, 300) / 100;
   const axisLimits = {};
   for (const axis of ["a", "b", "c"]) {
-    const min = finite(config[`${axis}Min`], `${axis.toUpperCase()}-axis minimum`);
-    const max = finite(config[`${axis}Max`], `${axis.toUpperCase()}-axis maximum`);
+    const min = hasRotaryAxes ? finite(config[`${axis}Min`], `${axis.toUpperCase()}-axis minimum`) : -180;
+    const max = hasRotaryAxes ? finite(config[`${axis}Max`], `${axis.toUpperCase()}-axis maximum`) : 180;
     if (min >= max) throw new Error(`${axis.toUpperCase()}-axis minimum must be lower than its maximum.`);
     axisLimits[`${axis}Min`] = min;
     axisLimits[`${axis}Max`] = max;
@@ -637,36 +643,48 @@ function validate(config) {
   }
   const skirtSpacing = pathSpacing(lineWidth, firstLayerHeight);
   const skirtMargin = skirtLoops > 0 ? skirtDistance + (skirtLoops - 1) * skirtSpacing + lineWidth / 2 : 0;
-  const radiusX = width / 2 + skirtMargin;
-  const radiusY = depth / 2 + skirtMargin;
-  const purgeLength = Math.max(minimumPurgeLength, width);
-  const purgeStartY = -depth / 2 - lineWidth - 2;
   const purgeSpacing = pathSpacing(lineWidth, firstLayerHeight);
-  const purgeMinX = purgeLine ? -width / 2 - lineWidth / 2 : 0;
-  const purgeMaxX = purgeLine ? -width / 2 + purgeLength + lineWidth / 2 : 0;
-  const purgeMinY = purgeLine ? purgeStartY - lineWidth / 2 : 0;
-  const purgeMaxY = purgeLine ? purgeStartY + purgeSpacing + lineWidth / 2 : 0;
-  const offsetMinX = Math.min(-radiusX, purgeMinX);
-  const offsetMaxX = Math.max(radiusX, purgeMaxX);
-  const offsetMinY = Math.min(-radiusY, purgeMinY);
-  const offsetMaxY = radiusY;
-  if (bedShape === "rectangular") {
-    if (centerX + offsetMinX < bedMinX - EPSILON || centerX + offsetMaxX > bedMaxX + EPSILON
-      || centerY + offsetMinY < bedMinY - EPSILON || centerY + offsetMaxY > bedMaxY + EPSILON) {
-      throw new Error("Specimen, skirt or purge line falls outside the configured bed. Adjust the print center or bed dimensions.");
+  const fitsBed = (groupWidth, groupDepth) => {
+    const radiusX = groupWidth / 2 + skirtMargin;
+    const radiusY = groupDepth / 2 + skirtMargin;
+    const purgeLength = Math.max(minimumPurgeLength, groupWidth);
+    const purgeStartY = -groupDepth / 2 - lineWidth - 2;
+    const purgeMinX = purgeLine ? -groupWidth / 2 - lineWidth / 2 : 0;
+    const purgeMaxX = purgeLine ? -groupWidth / 2 + purgeLength + lineWidth / 2 : 0;
+    const purgeMinY = purgeLine ? purgeStartY - lineWidth / 2 : 0;
+    const offsetMinX = Math.min(-radiusX, purgeMinX);
+    const offsetMaxX = Math.max(radiusX, purgeMaxX);
+    const offsetMinY = Math.min(-radiusY, purgeMinY);
+    const offsetMaxY = radiusY;
+    if (bedShape === "rectangular") {
+      return centerX + offsetMinX >= bedMinX - EPSILON && centerX + offsetMaxX <= bedMaxX + EPSILON
+        && centerY + offsetMinY >= bedMinY - EPSILON && centerY + offsetMaxY <= bedMaxY + EPSILON;
     }
-  } else {
     const bedCenterX = originAtCenter ? 0 : bedWidth / 2;
     const bedCenterY = originAtCenter ? 0 : bedDepth / 2;
-    const corners = [
+    return [
       [centerX + offsetMinX, centerY + offsetMinY],
       [centerX + offsetMinX, centerY + offsetMaxY],
       [centerX + offsetMaxX, centerY + offsetMinY],
       [centerX + offsetMaxX, centerY + offsetMaxY],
-    ];
-    if (corners.some(([x, y]) => Math.hypot(x - bedCenterX, y - bedCenterY) > bedWidth / 2 + EPSILON)) {
-      throw new Error("Specimen, skirt or purge line falls outside the configured circular bed.");
+    ].every(([x, y]) => Math.hypot(x - bedCenterX, y - bedCenterY) <= bedWidth / 2 + EPSILON);
+  };
+  const bestArrangement = (count) => {
+    let best = null;
+    for (let columns = 1; columns <= count; columns += 1) {
+      const candidate = arrangeGrid(count, columns, width, depth, sampleSpacing);
+      if (!fitsBed(candidate.groupWidth, candidate.groupDepth)) continue;
+      if (!best || candidate.groupWidth * candidate.groupDepth < best.groupWidth * best.groupDepth - EPSILON) best = candidate;
     }
+    return best;
+  };
+  const arrangement = bestArrangement(sampleCount);
+  if (!arrangement) {
+    let maxFit = 0;
+    for (let count = 1; count < sampleCount; count += 1) if (bestArrangement(count)) maxFit = count;
+    throw new Error(sampleCount === 1 || maxFit === 0
+      ? "Specimen, skirt or purge line falls outside the configured bed. Adjust the print center or bed dimensions."
+      : `${sampleCount} samples with ${format(sampleSpacing)} mm spacing, skirt and purge line do not fit on the bed. At most ${maxFit} fit; reduce the count or spacing.`);
   }
   const widestWallSpacing = Math.max(
     pathSpacing(lineWidth, layerHeight),
@@ -675,51 +693,35 @@ function validate(config) {
   const innermostWallInset = wallCount > 0
     ? lineWidth / 2 + (wallCount - 1) * widestWallSpacing
     : 0;
-  if (wallCount > 0 && innermostWallInset * 2 >= (specimen ? specimen.minFeature : Math.min(width, depth))) {
+  if (wallCount > 0 && innermostWallInset * 2 >= (oriented ? oriented.minFeature : Math.min(width, depth))) {
     throw new Error("The selected wall count and line width are too large for this specimen.");
   }
   values.sampleType = sampleType;
   values.specimen = specimen;
-  values.region = specimen ? createPolygonRegion(specimen.outline, skirtMargin + lineWidth + 2) : null;
+  values.region = specimen && sampleOrientation === "flat" ? createPolygonRegion(specimen.outline, skirtMargin + lineWidth + 2) : null;
+  values.oriented = oriented;
+  values.sampleOrientation = sampleOrientation;
+  values.sampleCount = sampleCount;
+  values.sampleSpacing = sampleSpacing;
+  values.placements = arrangement.placements;
+  values.groupWidth = arrangement.groupWidth;
+  values.groupDepth = arrangement.groupDepth;
   return values;
 }
 
-function makeLayerPaths(config, layerIndex, z, totalLayers, workBudget) {
+function translatePaths(paths, dx, dy) {
+  if (dx === 0 && dy === 0) return paths;
+  return paths.map((path) => ({ ...path, points: path.points.map((p) => point(p.x + dx, p.y + dy)) }));
+}
+
+function makeSamplePaths(config, layerIndex, totalLayers, layerHeight, workBudget, z) {
   const paths = [];
   const isCylinder = config.shape === "cylinder";
   const outerRadius = config.width / 2;
-  const layerHeight = layerIndex === 0
-    ? config.firstLayerHeight
-    : Math.min(config.layerHeight, config.height - config.firstLayerHeight - (layerIndex - 1) * config.layerHeight);
   const wallSpacing = pathSpacing(config.lineWidth, layerHeight);
   const infillAngle = config.infillAngle + (layerIndex % 2) * 90;
   const isSolid = layerIndex < config.bottomLayers || layerIndex >= totalLayers - config.topLayers
     || config.infillPercent >= 100;
-
-  if (layerIndex === 0 && config.purgeLine) {
-    const x = -config.width / 2;
-    const y = -config.depth / 2 - config.lineWidth - 2;
-    const secondY = y + pathSpacing(config.lineWidth, layerHeight);
-    const purgeLength = Math.max(config.minimumPurgeLength, config.width);
-    const passes = [
-      [point(x, y), point(x + purgeLength, y)],
-      [point(x, secondY), point(x + purgeLength, secondY)],
-    ];
-    paths.push({ type: "purge", points: connectScanlines(passes)[0] });
-  }
-  if (layerIndex === 0) {
-    for (let loop = config.skirtLoops - 1; loop >= 0; loop -= 1) {
-      const inset = -(config.skirtDistance + loop * wallSpacing);
-      if (config.region) {
-        for (const points of config.region.loops(inset)) paths.push({ type: "skirt", points });
-        continue;
-      }
-      const outline = isCylinder
-        ? circlePath(outerRadius - inset)
-        : rectanglePath(config.width - inset * 2, config.depth - inset * 2, 0);
-      if (outline.length) paths.push({ type: "skirt", points: outline });
-    }
-  }
 
   for (let wall = 0; wall < config.wallCount; wall += 1) {
     const inset = config.lineWidth / 2 + wall * wallSpacing;
@@ -753,6 +755,56 @@ function makeLayerPaths(config, layerIndex, z, totalLayers, workBudget) {
     const spacing = config.lineWidth * 100 / config.infillPercent;
     paths.push(...sparseInfill(config, inset, config.infillAngle, spacing, layerIndex, workBudget, z));
   }
+  return paths;
+}
+
+function makeLayerPaths(config, layerIndex, z, totalLayers, workBudget) {
+  const paths = [];
+  const isCylinder = config.shape === "cylinder";
+  const outerRadius = config.width / 2;
+  const layerHeight = layerIndex === 0
+    ? config.firstLayerHeight
+    : Math.min(config.layerHeight, config.height - config.firstLayerHeight - (layerIndex - 1) * config.layerHeight);
+  const wallSpacing = pathSpacing(config.lineWidth, layerHeight);
+  const groupedSkirt = config.sampleCount > 1 || (config.oriented && config.oriented.orientation !== "flat");
+
+  if (layerIndex === 0 && config.purgeLine) {
+    const x = -config.groupWidth / 2;
+    const y = -config.groupDepth / 2 - config.lineWidth - 2;
+    const secondY = y + pathSpacing(config.lineWidth, layerHeight);
+    const purgeLength = Math.max(config.minimumPurgeLength, config.groupWidth);
+    const passes = [
+      [point(x, y), point(x + purgeLength, y)],
+      [point(x, secondY), point(x + purgeLength, secondY)],
+    ];
+    paths.push({ type: "purge", points: connectScanlines(passes)[0] });
+  }
+  if (layerIndex === 0) {
+    for (let loop = config.skirtLoops - 1; loop >= 0; loop -= 1) {
+      const inset = -(config.skirtDistance + loop * wallSpacing);
+      if (!groupedSkirt && config.region) {
+        for (const points of config.region.loops(inset)) paths.push({ type: "skirt", points });
+        continue;
+      }
+      const outline = isCylinder && !groupedSkirt
+        ? circlePath(outerRadius - inset)
+        : rectanglePath(config.groupWidth - inset * 2, config.groupDepth - inset * 2, 0);
+      if (outline.length) paths.push({ type: "skirt", points: outline });
+    }
+  }
+
+  let sampleConfig = config;
+  if (config.oriented && config.oriented.rectangles) {
+    const zMid = Math.max(0, z - layerHeight / 2);
+    sampleConfig = {
+      ...config,
+      width: config.oriented.width,
+      depth: config.oriented.depth,
+      region: createRectangleRegion(config.oriented.rectangles(zMid)),
+    };
+  }
+  const samplePaths = makeSamplePaths(sampleConfig, layerIndex, totalLayers, layerHeight, workBudget, z);
+  for (const placement of config.placements) paths.push(...translatePaths(samplePaths, placement.x, placement.y));
   return paths.map((path) => ({ ...path, z }));
 }
 
@@ -793,7 +845,8 @@ export function generateGcode(input) {
     `; Infill base angle: ${format(config.infillAngle, 1)} degrees`,
     `; Tilt: ${format(config.tiltAngle, 1)} degrees; orientation: ${config.orientation}; angle mode: ${config.angleMode}`,
     `; Nozzle tip: ${format(config.tipDiameter, 2)} mm; hole: ${format(config.holeDiameter, 2)} mm; layer height: ${format(config.layerHeight, 3)} mm; extrusion multiplier: ${format(config.extrusionMultiplier * 100, 1)}%`,
-    `; Machine: ${config.axisCount}-axis; tilt axis ${config.tiltAxis}; rotary C: ${config.rotaryCMode}; firmware dialect: ${config.firmware}`,
+    `; Machine: ${config.axisCount}-axis${config.axisCount >= 4 ? `; tilt axis ${config.tiltAxis}; rotary C: ${config.rotaryCMode}` : "; no rotary axes (A/B/C moves not generated)"}; firmware dialect: ${config.firmware}`,
+    ...(config.specimen ? [`; Samples: ${config.sampleCount} x ${config.specimen.label}, ${config.sampleOrientation} orientation, ${format(config.sampleSpacing)} mm spacing; group footprint ${format(config.groupWidth)} x ${format(config.groupDepth)} mm with a single shared skirt`] : []),
     `; Bed: ${config.bedShape}; origin at center: ${config.originAtCenter}; print center X${format(config.centerX)} Y${format(config.centerY)}`,
     "; Verify kinematics, axis signs, limits, bed fit and firmware-specific start/end commands before printing.",
   ];
@@ -912,9 +965,15 @@ export function generateGcode(input) {
       shape: config.shape,
       sampleType: config.sampleType,
       sampleLabel: config.specimen?.label ?? null,
-      outline: config.specimen?.outline ?? null,
-      width: config.width,
-      depth: config.depth,
+      outline: config.specimen && config.sampleOrientation === "flat" ? config.specimen.outline : null,
+      width: config.groupWidth,
+      depth: config.groupDepth,
+      sampleWidth: config.width,
+      sampleDepth: config.depth,
+      sampleCount: config.sampleCount,
+      sampleOrientation: config.sampleOrientation,
+      axisCount: config.axisCount,
+      bodies: config.placements,
       height: config.height,
       centerX: config.centerX,
       centerY: config.centerY,
