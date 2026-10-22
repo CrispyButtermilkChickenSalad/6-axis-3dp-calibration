@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#f5f2f8">
     <title>Tilting nozzle · primitive generator</title>
-    <link rel="stylesheet" href="./styles.css?v=mechanical-6">
-    <script type="module" src="./src/app.mjs?v=mechanical-6"></script>
+    <link rel="stylesheet" href="./styles.css?v=mechanical-7">
+    <script type="module" src="./src/app.mjs?v=mechanical-7"></script>
   </head>
   <body>
     <main class="shell">
@@ -260,7 +260,7 @@
             <div><span>TOOLPATH</span><strong id="stat-paths">—</strong></div>
             <div><span>EST. FILAMENT</span><strong id="stat-filament">—</strong></div>
           </div>
-          <div class="preview-note"><span class="note-mark">!</span><p>G-code is a machine-specific starting point, not a universal slicer output. Check axis directions, rotary travel and cable clearance, firmware commands, bed limits, nozzle clearance and motion kinematics before printing.</p></div>
+          <div class="preview-note"><span class="note-mark">!</span><p>G-code is a machine-specific starting point, not a universal slicer output. Check axis directions, rotary travel and cable clearance, firmware commands, bed limits, nozzle clearance and motion kinematics before printing. The G-code assumes tool-centre-point (TCP/RTCP) control is enabled so XYZ is the nozzle tip; it does not compensate XYZ for tilt.</p></div>
           <div class="output-heading"><div><label class="eyebrow" for="output-filename">GENERATED FILE</label><div class="filename-editor"><input id="output-filename" type="text" value="primitive-test" maxlength="100" required aria-describedby="output-filename-hint"><span>.gcode</span></div><span class="filename-hint" id="output-filename-hint">Choose a file name without the .gcode extension.</span></div><button type="button" class="download-button" id="download-button" disabled>Download G-code <span>↓</span></button></div>
           <details class="code-details"><summary>Review generated G-code <span id="code-line-count">0 lines</span></summary><pre id="preview-code">Generate a toolpath to inspect its G-code.</pre></details>
         </section>

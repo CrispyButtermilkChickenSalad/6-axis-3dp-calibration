@@ -1002,6 +1002,7 @@ export function generateGcode(input) {
     `; Tilt: ${format(config.tiltAngle, 1)} degrees; orientation: ${config.orientation}; angle mode: ${config.angleMode}`,
     `; Nozzle tip: ${format(config.tipDiameter, 2)} mm; hole: ${format(config.holeDiameter, 2)} mm; layer height: ${format(config.layerHeight, 3)} mm; extrusion multiplier: ${format(config.extrusionMultiplier * 100, 1)}%`,
     `; Machine: ${config.axisCount}-axis${config.axisCount >= 4 ? `; rotary axes ${config.axisCount === 4 ? config.tiltAxis : config.rotaryPair}; tilt axis ${config.tiltAxis}; rotary C: ${config.rotaryCMode}` : "; no rotary axes (A/B/C moves not generated)"}; firmware dialect: ${config.firmware}`,
+    ...(config.axisCount >= 4 ? ["; ASSUMES tool-centre-point (TCP/RTCP) control is enabled: XYZ is the nozzle tip and rotary words pivot about it. No XYZ compensation for tilt is generated."] : []),
     ...(config.specimen ? [`; Samples: ${config.sampleCount} x ${config.specimen.label}, ${config.sampleOrientation} orientation, ${format(config.sampleSpacing)} mm spacing; group footprint ${format(config.groupWidth)} x ${format(config.groupDepth)} mm with a single shared skirt`] : []),
     `; Bed: ${config.bedShape}; origin at center: ${config.originAtCenter}; print center X${format(config.centerX)} Y${format(config.centerY)}`,
     "; Verify kinematics, axis signs, limits, bed fit and firmware-specific start/end commands before printing.",
