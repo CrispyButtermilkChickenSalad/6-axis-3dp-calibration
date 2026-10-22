@@ -125,30 +125,40 @@ export function createScenePreview(canvas) {
       if (path.type === "sparse-infill") return colors.sparsePath;
       return colors.prime;
     };
-    const drawLayer = (layer, opacity) => {
+    const drawSolidLayer = (layer, paths) => {
+      const z = layer.z;
+      const thickness = Math.max(0.1, model.layerHeight ?? 0.2) * Math.cos(pitch) * scale;
+      const widthPx = Math.max(1, (model.lineWidth ?? 0.42) * scale);
       context.save();
-      context.globalAlpha = opacity;
-      for (const type of ["wall", "solid-infill", "sparse-infill", "prime"]) {
-        context.beginPath();
-        for (const path of layer.paths) {
-          const isPrime = path.type === "purge" || path.type === "skirt";
-          if ((type === "prime" ? !isPrime : path.type !== type) || path.points.length < 2) continue;
-          const z = path.z ?? layer.z;
-          const first = path.points[0];
-          const start = screen(first.x, first.y, z);
-          context.moveTo(start.x, start.y);
-          for (let index = 1; index < path.points.length; index += 1) {
-            const point = path.points[index];
-            const projectedPoint = screen(point.x, point.y, z);
-            context.lineTo(projectedPoint.x, projectedPoint.y);
+      context.lineCap = "round";
+      context.lineJoin = "round";
+      for (const type of ["prime", "wall", "solid-infill", "sparse-infill"]) {
+        const batch = paths.filter((path) => path.points.length > 1
+          && (type === "prime" ? path.type === "purge" || path.type === "skirt" : path.type === type));
+        if (!batch.length) continue;
+        const trace = (dy) => {
+          context.beginPath();
+          for (const path of batch) {
+            const pathZ = path.z ?? z;
+            path.points.forEach((point, index) => {
+              const p = screen(point.x, point.y, pathZ);
+              context[index ? "lineTo" : "moveTo"](p.x, p.y + dy);
+            });
           }
-        }
+        };
+        context.lineWidth = widthPx;
+        trace(thickness * 0.5);
         context.strokeStyle = pathColor({ type });
-        context.lineWidth = 1;
+        context.stroke();
+        context.strokeStyle = "rgba(0, 0, 0, 0.38)";
+        context.stroke();
+        trace(0);
+        context.strokeStyle = pathColor({ type });
         context.stroke();
       }
       context.restore();
     };
+    const drawLayer = (layer) => drawSolidLayer(layer, layer.paths);
 
     const bedCenterX = (model.bedMinX + model.bedMaxX) / 2;
     const bedCenterY = (model.bedMinY + model.bedMaxY) / 2;
@@ -229,10 +239,10 @@ export function createScenePreview(canvas) {
       model.allLayers.forEach((layer) => {
         if (layer.number > activeLayerNumber) return;
         if (layer.number === activeLayerNumber) return;
-        const progress = layer.number / Math.max(1, activeLayerNumber);
-        drawLayer(layer, 0.14 + progress * 0.34);
+        drawLayer(layer);
       });
     }
+    drawSolidLayer({ z: topZ }, model.paths);
     model.paths.forEach((path) => {
       const points = path.points.map((item) => screen(item.x, item.y, path.z ?? topZ));
       drawDirectionalPath(context, points, pathColor(path));

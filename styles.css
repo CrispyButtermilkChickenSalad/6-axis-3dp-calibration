@@ -89,10 +89,12 @@ h1 span { color: var(--green); }
 .orientation-option input, .angle-mode-option input { position: absolute; opacity: 0; pointer-events: none; }
 .orientation-option:focus-within, .angle-mode-option:focus-within { outline: 2px solid #c4b0d5; outline-offset: 2px; }
 .orientation-illustration, .angle-mode-art { display: grid; place-items: center; min-height: 52px; border-radius: 4px; background: #f4f1f7; }
-.orientation-illustration svg { width: 100%; max-width: 104px; height: 48px; overflow: visible; }
-.bead { stroke: #b998d1; stroke-width: 6; stroke-linecap: round; }
-.path-line { stroke: #9270b0; stroke-width: 1.3; stroke-dasharray: 3 2; }
-.direction-arrow, .tilt-arrow { fill: none; stroke: #735097; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.orientation-illustration { min-height: 82px; }
+.orientation-illustration svg { width: 100%; max-width: 230px; height: 78px; overflow: visible; }
+.bead { fill: none; stroke: #d4774b; stroke-width: 10; stroke-linecap: round; }
+.orientation-arrow { fill: none; stroke: #54715d; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.orientation-normal { fill: none; stroke: #735097; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.diagram-label { fill: #665d6d; font: 6px var(--mono); letter-spacing: .3px; }
 .nozzle-shape { fill: #71627f; stroke: #41374a; stroke-width: 1; stroke-linejoin: round; }
 .nozzle-tip { fill: #ce8152; stroke: #784b38; stroke-width: .8; }
 .orientation-name, .angle-name { color: #455047; font-size: 9px; font-weight: 600; }
@@ -100,14 +102,16 @@ h1 span { color: var(--green); }
 .angle-mode-group { margin-top: 18px; }
 .angle-mode-options { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 9px; }
 .angle-mode-option { grid-template-rows: auto auto 1fr; padding: 9px; }
-.angle-mode-art { min-height: 100px; }
-.angle-mode-art svg { width: 100%; max-width: 220px; height: 96px; overflow: visible; }
+.angle-mode-art { min-height: 116px; }
+.angle-mode-art svg { width: 100%; max-width: 270px; height: 112px; overflow: visible; }
 .angle-mode-art text { fill: #8c8194; font: 6px var(--mono); letter-spacing: .3px; }
 .angle-arc { fill: none; stroke: #ce8152; stroke-width: 1.2; }
 .adaptive-link { fill: none; stroke: #a88abe; stroke-width: 1.2; stroke-dasharray: 2 2; }
-.mode-bead { fill: none; stroke: #d6b88b; stroke-width: 6; stroke-linecap: round; }
+.mode-bead { fill: none; stroke: #d4774b; stroke-width: 10; stroke-linecap: round; }
 .mode-path { fill: none; stroke: #9270b0; stroke-width: 1.2; stroke-dasharray: 3 2; }
 .mode-arrow { fill: none; stroke: #735097; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.angle-mode-art .orientation-arrow { stroke-width: 1.6; }
+.angle-mode-art .diagram-label { font-size: 5.5px; }
 .mode-nozzle { fill: #71627f; stroke: #41374a; stroke-width: 1; stroke-linejoin: round; }
 .mode-tip, .mode-tip-dot { fill: #ce8152; stroke: #784b38; stroke-width: .8; }
 .angle-mode-option .orientation-note { font-size: 9px; }
@@ -292,6 +296,8 @@ body[data-theme="dark"] .preview-legend-items { color: #b9aec3; }
 body[data-theme="dark"] .mode-path { stroke: #c2a4da; }
 body[data-theme="dark"] .mode-arrow { stroke: #d0b7e7; }
 body[data-theme="dark"] .mode-bead { stroke: #b9956a; }
+body[data-theme="dark"] .diagram-label { fill: #b5a8c1; }
+body[data-theme="dark"] .orientation-arrow { stroke: #91b99a; }
 body[data-theme="dark"] .mode-tip,
 body[data-theme="dark"] .mode-tip-dot { fill: #e0a16b; stroke: #68442f; }
 body[data-theme="dark"] .pattern-art svg .pattern-arrow { stroke: #e0a16b; }

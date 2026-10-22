@@ -630,7 +630,8 @@ function makeLayerPaths(config, layerIndex, z, totalLayers, workBudget) {
     : Math.min(config.layerHeight, config.height - config.firstLayerHeight - (layerIndex - 1) * config.layerHeight);
   const wallSpacing = pathSpacing(config.lineWidth, layerHeight);
   const infillAngle = config.infillAngle + (layerIndex % 2) * 90;
-  const isSolid = layerIndex < config.bottomLayers || layerIndex >= totalLayers - config.topLayers;
+  const isSolid = layerIndex < config.bottomLayers || layerIndex >= totalLayers - config.topLayers
+    || config.infillPercent >= 100;
 
   if (layerIndex === 0 && config.purgeLine) {
     const x = -config.width / 2;

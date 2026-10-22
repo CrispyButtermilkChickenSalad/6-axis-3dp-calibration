@@ -107,6 +107,23 @@ test("zero sparse infill and zero skins keep walls without infill paths", () => 
   assert.doesNotMatch(wallsOnly.text, /^G1 .*; (?:solid|sparse) infill$/m);
 });
 
+test("100% sparse infill uses the solid infill pattern", () => {
+  const result = generateGcode({
+    ...baseConfig,
+    shape: "cube",
+    width: 24,
+    height: 1,
+    wallCount: 0,
+    topLayers: 0,
+    bottomLayers: 0,
+    infillPercent: 100,
+    sparsePattern: "gyroid",
+  });
+  const types = new Set(result.preview.allLayers.flatMap((layer) => layer.paths.map((path) => path.type)));
+  assert.ok(types.has("solid-infill"));
+  assert.ok(!types.has("sparse-infill"));
+});
+
 test("supports all sparse infill patterns and a wall-free sparse specimen", () => {
   for (const sparsePattern of ["rectilinear", "grid", "triangles", "honeycomb", "cubic", "gyroid"]) {
     const result = generateGcode({
