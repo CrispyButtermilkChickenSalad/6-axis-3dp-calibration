@@ -887,10 +887,12 @@ function makeLayerPaths(config, layerIndex, z, totalLayers, workBudget) {
       }
       roofRects = roofRects.filter((rect) => rect.maxX - rect.minX > config.lineWidth);
     }
-    const supportPaths = [
-      ...supportFill(ribRects, config.lineWidth, layerIndex),
-      ...roofFill(roofRects, config.lineWidth, pathSpacing(config.lineWidth, layerHeight) / config.supportRoofDensity, layerIndex),
-    ];
+    const supportPaths = layerIndex === 0
+      ? roofFill(supportRects, config.lineWidth, pathSpacing(config.lineWidth, layerHeight), 0)
+      : [
+        ...supportFill(ribRects, config.lineWidth, layerIndex),
+        ...roofFill(roofRects, config.lineWidth, pathSpacing(config.lineWidth, layerHeight) / config.supportRoofDensity, layerIndex),
+      ];
     for (const placement of config.placements) paths.push(...translatePaths(supportPaths, placement.x, placement.y));
   }
   const samplePaths = makeSamplePaths(sampleConfig, layerIndex, totalLayers, layerHeight, workBudget, z);

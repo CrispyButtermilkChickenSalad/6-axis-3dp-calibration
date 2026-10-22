@@ -656,6 +656,10 @@ test("tensile side orientation generates supports with an adjustable interface g
   assert.ok(!generateGcode({ ...tensile, supportEnabled: false }).text.includes("; support"));
   const supportPoints = (result) => result.preview.allLayers.flatMap((layer) => layer.paths.filter((path) => path.type === "support")).reduce((sum, path) => sum + path.points.length, 0);
   assert.ok(supportPoints(generateGcode({ ...tensile, supportRoofDensity: 90 })) > supportPoints(generateGcode({ ...tensile, supportRoofEnabled: false })));
+  const raftLayer = generateGcode({ ...tensile, brimEnabled: true, brimLines: 3 }).preview.allLayers[0].paths;
+  const raft = raftLayer.filter((path) => path.type === "support");
+  assert.ok(raft.length > 0 && raft.every((path) => path.points.length > 6));
+  assert.ok(raftLayer.some((path) => path.type === "brim"));
   assert.match(supported.text, /roof 2 layers at 45% monotonic/);
   assert.ok(!generateGcode({ ...tensile, mechanicalOrientation: "flat" }).text.includes("; support"));
   assert.ok(!generateGcode({ ...tensile, mechanicalSample: "flexural" }).text.includes("; support"));

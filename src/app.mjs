@@ -1,7 +1,7 @@
-import { generateGcode, minimumLayerHeight, primingSpacing } from "./gcode.mjs?v=mechanical-5";
-import { mechanicalSpecimen } from "./mechanical.mjs?v=mechanical-5";
-import { orientedSpecimen } from "./orientation.mjs?v=mechanical-5";
-import { createScenePreview } from "./preview.mjs?v=mechanical-5";
+import { generateGcode, minimumLayerHeight, primingSpacing } from "./gcode.mjs?v=mechanical-6";
+import { mechanicalSpecimen } from "./mechanical.mjs?v=mechanical-6";
+import { orientedSpecimen } from "./orientation.mjs?v=mechanical-6";
+import { createScenePreview } from "./preview.mjs?v=mechanical-6";
 
 const form = document.querySelector("#generator-form");
 const errorBox = document.querySelector("#form-error");
