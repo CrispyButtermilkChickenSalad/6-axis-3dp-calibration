@@ -617,6 +617,12 @@ function validate(config) {
     ? true
     : config.supportEnabled === true || config.supportEnabled === "on";
   const supportActive = Boolean(oriented?.support) && supportEnabled;
+  const supportRoofEnabled = config.supportRoofEnabled === undefined
+    ? true
+    : config.supportRoofEnabled === true || config.supportRoofEnabled === "on";
+  const supportRoofLayers = supportRoofEnabled ? ranged(config.supportRoofLayers ?? 2, "Support roof layers", 0, 10) : 0;
+  if (!Number.isInteger(supportRoofLayers)) throw new Error("Support roof layers must be a whole number.");
+  const supportRoofDensity = ranged(config.supportRoofDensity ?? 45, "Support roof density", 5, 100) / 100;
   const axisLimits = {};
   for (const axis of ["a", "b", "c"]) {
     const min = hasRotaryAxes ? finite(config[`${axis}Min`], `${axis.toUpperCase()}-axis minimum`) : -180;
@@ -633,7 +639,7 @@ function validate(config) {
     orientation: String(config.orientation), firmware: String(config.firmware),
     bedWidth, bedDepth, centerX, centerY, skirtLoops, skirtDistance, purgeLine,
     minimumPurgeLength, purgeMultiplier, primeSpacing, primeWidth, brimLines, brimExtent,
-    supportActive, supportInterface, rotaryPair,
+    supportActive, supportInterface, supportRoofLayers, supportRoofDensity, rotaryPair,
     rotaryCMode: String(config.rotaryCMode) === "bed" ? "bed" : "tool",
     bedShape, bedMinX, bedMaxX, bedMinY, bedMaxY, originAtCenter,
     firstLayerFan: ranged(config.firstLayerFan, "First layer fan", 0, 100),
@@ -860,7 +866,31 @@ function makeLayerPaths(config, layerIndex, z, totalLayers, workBudget) {
   }
 
   if (supportRects.length) {
-    const supportPaths = supportFill(supportRects, config.lineWidth, layerIndex);
+    let ribRects = supportRects;
+    let roofRects = [];
+    if (config.supportRoofLayers > 0) {
+      const zMid = Math.max(0, z - layerHeight / 2) + config.supportRoofLayers * layerHeight;
+      const above = config.oriented.support(zMid, config.supportInterface, config.lineWidth);
+      ribRects = [];
+      for (const rect of supportRects) {
+        const overlaps = above
+          .map((other) => [Math.max(rect.minX, other.minX), Math.min(rect.maxX, other.maxX)])
+          .filter(([from, to]) => to > from)
+          .sort((a, b) => a[0] - b[0]);
+        let cursor = rect.minX;
+        for (const [from, to] of overlaps) {
+          if (from > cursor) roofRects.push({ ...rect, minX: cursor, maxX: from });
+          ribRects.push({ ...rect, minX: from, maxX: to });
+          cursor = to;
+        }
+        if (cursor < rect.maxX) roofRects.push({ ...rect, minX: cursor, maxX: rect.maxX });
+      }
+      roofRects = roofRects.filter((rect) => rect.maxX - rect.minX > config.lineWidth);
+    }
+    const supportPaths = [
+      ...supportFill(ribRects, config.lineWidth, layerIndex),
+      ...roofFill(roofRects, config.lineWidth, pathSpacing(config.lineWidth, layerHeight) / config.supportRoofDensity, layerIndex),
+    ];
     for (const placement of config.placements) paths.push(...translatePaths(supportPaths, placement.x, placement.y));
   }
   const samplePaths = makeSamplePaths(sampleConfig, layerIndex, totalLayers, layerHeight, workBudget, z);
@@ -882,6 +912,29 @@ function mergeRectangles(rectangles, gap) {
     }
   }
   return merged;
+}
+
+function roofFill(rectangles, lineWidth, spacing, layerIndex) {
+  const paths = [];
+  for (const rectangle of rectangles) {
+    const minX = rectangle.minX + lineWidth / 2;
+    const maxX = rectangle.maxX - lineWidth / 2;
+    const minY = rectangle.minY + lineWidth / 2;
+    const maxY = rectangle.maxY - lineWidth / 2;
+    if (maxX - minX < 0 || maxY - minY < 0) continue;
+    const alongX = layerIndex % 2 === 0;
+    const [aMin, aMax, bMin, bMax] = alongX ? [minX, maxX, minY, maxY] : [minY, maxY, minX, maxX];
+    const count = Math.max(1, Math.ceil((bMax - bMin) / spacing) + 1);
+    const step = count > 1 ? (bMax - bMin) / (count - 1) : 0;
+    const points = [];
+    for (let line = 0; line < count; line += 1) {
+      const b = bMin + line * step;
+      const [from, to] = line % 2 === 0 ? [aMin, aMax] : [aMax, aMin];
+      points.push(alongX ? point(from, b) : point(b, from), alongX ? point(to, b) : point(b, to));
+    }
+    paths.push({ type: "support", points });
+  }
+  return paths;
 }
 
 function supportFill(rectangles, lineWidth, layerIndex) {
@@ -942,7 +995,7 @@ export function generateGcode(input) {
     `; Shape: ${config.specimen ? config.specimen.label : config.shape}; dimensions: ${format(config.width)} x ${format(config.depth)} x ${format(config.height)} mm`,
     `; Walls: ${config.wallCount}; sparse infill: ${config.sparsePattern} at ${format(config.infillPercent, 0)}%; solid infill: ${config.solidPattern}; top/bottom layers: ${config.topLayers}/${config.bottomLayers}; infill-to-wall overlap: ${format(config.infillOverlap, 0)}%`,
     `; Priming: purge lines ${config.purgeLine ? "on" : "off"} (${format(config.minimumPurgeLength, 0)} mm minimum each); skirt loops ${config.skirtLoops}; brim lines ${config.brimLines} (${format(config.brimExtent)} mm wide); extrusion multiplier ${format(config.purgeMultiplier * 100, 0)}%; priming line spacing ${format(config.primeSpacing, 3)} mm`,
-    ...(config.supportActive ? [`; Supports: automatic, interface spacing ${format(config.supportInterface)} mm`] : []),
+    ...(config.supportActive ? [`; Supports: automatic, interface spacing ${format(config.supportInterface)} mm; roof ${config.supportRoofLayers} layers at ${format(config.supportRoofDensity * 100, 0)}% monotonic`] : []),
     `; Infill base angle: ${format(config.infillAngle, 1)} degrees`,
     `; Tilt: ${format(config.tiltAngle, 1)} degrees; orientation: ${config.orientation}; angle mode: ${config.angleMode}`,
     `; Nozzle tip: ${format(config.tipDiameter, 2)} mm; hole: ${format(config.holeDiameter, 2)} mm; layer height: ${format(config.layerHeight, 3)} mm; extrusion multiplier: ${format(config.extrusionMultiplier * 100, 1)}%`,

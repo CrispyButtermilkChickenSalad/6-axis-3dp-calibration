@@ -285,10 +285,19 @@ export function createScenePreview(canvas) {
 
     if (model.allLayers) {
       const activeLayerNumber = model.activeLayerNumber;
+      const infillWindow = 6;
+      const infillStride = 8;
       model.allLayers.forEach((layer) => {
-        if (layer.number > activeLayerNumber) return;
-        if (layer.number === activeLayerNumber) return;
-        drawLayer(layer);
+        if (layer.number >= activeLayerNumber) return;
+        const near = activeLayerNumber - layer.number <= infillWindow;
+        const sampled = layer.number % infillStride === 0;
+        if (near || sampled) {
+          context.globalAlpha = near ? 1 : 0.45;
+          drawLayer(layer);
+          context.globalAlpha = 1;
+          return;
+        }
+        drawLayer({ ...layer, paths: layer.paths.filter((path) => !path.type.endsWith("infill")) });
       });
     }
     drawSolidLayer({ z: topZ }, model.paths);

@@ -1,7 +1,7 @@
-import { generateGcode, minimumLayerHeight, primingSpacing } from "./gcode.mjs?v=mechanical-3";
-import { mechanicalSpecimen } from "./mechanical.mjs?v=mechanical-3";
-import { orientedSpecimen } from "./orientation.mjs?v=mechanical-3";
-import { createScenePreview } from "./preview.mjs?v=mechanical-3";
+import { generateGcode, minimumLayerHeight, primingSpacing } from "./gcode.mjs?v=mechanical-5";
+import { mechanicalSpecimen } from "./mechanical.mjs?v=mechanical-5";
+import { orientedSpecimen } from "./orientation.mjs?v=mechanical-5";
+import { createScenePreview } from "./preview.mjs?v=mechanical-5";
 
 const form = document.querySelector("#generator-form");
 const errorBox = document.querySelector("#form-error");
@@ -33,6 +33,7 @@ function readConfig() {
   config.rotaryPair = fiveAxisPair.slice().sort().join("");
   config.brimEnabled = form.elements.namedItem("brimEnabled").checked;
   config.supportEnabled = form.elements.namedItem("supportEnabled").checked;
+  config.supportRoofEnabled = form.elements.namedItem("supportRoofEnabled").checked;
   config.tiltAxis = axisCount < 4 ? "A"
     : axisCount === 4 ? (rotaryB && !rotaryA ? "B" : "A")
       : axisCount === 5 && config.rotaryPair !== "AB" ? config.rotaryPair[0]
@@ -72,6 +73,13 @@ function updateSupportFields() {
   const spacing = form.elements.namedItem("supportInterfaceSpacing");
   spacing.disabled = !applicable || !enabled.checked;
   spacing.closest("label").classList.toggle("is-disabled", spacing.disabled);
+  const roof = form.elements.namedItem("supportRoofEnabled");
+  roof.disabled = !applicable || !enabled.checked;
+  ["supportRoofLayers", "supportRoofDensity"].forEach((name) => {
+    const input = form.elements.namedItem(name);
+    input.disabled = roof.disabled || !roof.checked;
+    input.closest("label").classList.toggle("is-disabled", input.disabled);
+  });
 }
 
 function updateAxisControls(event) {
