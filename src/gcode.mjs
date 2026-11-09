@@ -2,7 +2,7 @@ const EPSILON = 1e-8;
 const MAX_LAYERS = 2000;
 
 import { createPolygonRegion } from "./region.mjs";
-import { mechanicalSpecimen } from "./mechanical.mjs";
+import { mechanicalSpecimen } from "./mechanical.mjs?v=mechanical-8";
 import { arrangeGrid, createRectangleRegion, orientedSpecimen } from "./orientation.mjs";
 
 export function minimumLayerHeight(tipDiameter, angleDegrees) {
@@ -525,7 +525,7 @@ function resolveCustomGcode(source, config, name) {
 function validate(config) {
   const sampleType = config.sampleType === "mechanical" ? "mechanical" : "primitive";
   const specimen = sampleType === "mechanical"
-    ? mechanicalSpecimen(String(config.mechanicalSample), String(config.mechanicalStandard ?? "astm"))
+    ? mechanicalSpecimen(String(config.mechanicalSample), String(config.mechanicalStandard ?? "astm"), String(config.tensileType ?? "I"))
     : null;
   const shape = specimen ? specimen.key : String(config.shape);
   if (!specimen && !["cube", "cuboid", "cylinder"].includes(shape)) throw new Error("Choose cube, cuboid, or cylinder.");
@@ -567,7 +567,11 @@ function validate(config) {
     throw new Error("Line width must exceed the layer-height overlap compensation for both regular and first layers.");
   }
   const clearance = minimumLayerHeight(tipDiameter, tiltAngle);
-  if (firstLayerHeight + EPSILON < clearance || layerHeight + EPSILON < clearance) {
+  const overrideLayerClearance = config.overrideLayerClearance === true || config.overrideLayerClearance === "on";
+  if (firstLayerHeight + EPSILON < clearance) {
+    throw new Error(`First layer height must be at least ${format(clearance, 3)} mm for a ${format(tiltAngle, 1)}° tilt and ${format(tipDiameter, 2)} mm nozzle tip; it cannot be overridden.`);
+  }
+  if (!overrideLayerClearance && layerHeight + EPSILON < clearance) {
     throw new Error(`Layer height must be at least ${format(clearance, 3)} mm for a ${format(tiltAngle, 1)}° tilt and ${format(tipDiameter, 2)} mm nozzle tip.`);
   }
   const extrusionMultiplier = ranged(config.extrusionMultiplier, "Extrusion multiplier", 1, 300) / 100;
@@ -635,6 +639,7 @@ function validate(config) {
     width, depth, height, shape, wallCount, lineWidth, infillPercent, infillAngle,
     infillOverlap, solidPattern, sparsePattern, bottomLayers, topLayers,
     tiltAngle, tipDiameter, holeDiameter, layerHeight, firstLayerHeight, extrusionMultiplier,
+    clearanceOverridden: overrideLayerClearance && layerHeight + EPSILON < clearance, clearance,
     filamentDiameter, axisCount, tiltAxis, angleMode, orientationOffset: orientationOffsetValue,
     orientation: String(config.orientation), firmware: String(config.firmware),
     bedWidth, bedDepth, centerX, centerY, skirtLoops, skirtDistance, purgeLine,
@@ -1001,6 +1006,7 @@ export function generateGcode(input) {
     `; Infill base angle: ${format(config.infillAngle, 1)} degrees`,
     `; Tilt: ${format(config.tiltAngle, 1)} degrees; orientation: ${config.orientation}; angle mode: ${config.angleMode}`,
     `; Nozzle tip: ${format(config.tipDiameter, 2)} mm; hole: ${format(config.holeDiameter, 2)} mm; layer height: ${format(config.layerHeight, 3)} mm; extrusion multiplier: ${format(config.extrusionMultiplier * 100, 1)}%`,
+    ...(config.clearanceOverridden ? [`; WARNING: Regular layer height is below the calculated nozzle clearance minimum of ${format(config.clearance, 3)} mm; collision risk accepted by user.`] : []),
     `; Machine: ${config.axisCount}-axis${config.axisCount >= 4 ? `; rotary axes ${config.axisCount === 4 ? config.tiltAxis : config.rotaryPair}; tilt axis ${config.tiltAxis}; rotary C: ${config.rotaryCMode}` : "; no rotary axes (A/B/C moves not generated)"}; firmware dialect: ${config.firmware}`,
     ...(config.axisCount >= 4 ? ["; ASSUMES tool-centre-point (TCP/RTCP) control is enabled: XYZ is the nozzle tip and rotary words pivot about it. No XYZ compensation for tilt is generated."] : []),
     ...(config.specimen ? [`; Samples: ${config.sampleCount} x ${config.specimen.label}, ${config.sampleOrientation} orientation, ${format(config.sampleSpacing)} mm spacing; group footprint ${format(config.groupWidth)} x ${format(config.groupDepth)} mm with a single shared skirt`] : []),

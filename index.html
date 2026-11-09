@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#f5f2f8">
     <title>Tilting nozzle · primitive generator</title>
     <link rel="stylesheet" href="./styles.css?v=mechanical-7">
-    <script type="module" src="./src/app.mjs?v=mechanical-7"></script>
+    <script type="module" src="./src/app.mjs?v=mechanical-8"></script>
   </head>
   <body>
     <main class="shell">
@@ -66,6 +66,7 @@
               </fieldset>
               <div class="field-grid mechanical-standard-grid">
                 <label class="field"><span>Dimension standard</span><select name="mechanicalStandard"><option value="astm">ASTM</option><option value="iso">ISO</option></select></label>
+                <label class="field" id="tensile-type-field"><span>ASTM D638 tensile type</span><select name="tensileType"><option value="I">Type I</option><option value="V">Type V · smaller, faster</option></select></label>
                 <label class="field"><span>Number of samples <small>1–10</small></span><input name="sampleCount" type="number" min="1" max="10" step="1" value="1"></label>
                 <label class="field"><span>Sample spacing <small>mm</small></span><input name="sampleSpacing" type="number" min="0" max="100" step="0.5" value="4"></label>
               </div>
@@ -131,6 +132,8 @@
               <label class="field"><span>Filament diameter <small>mm</small></span><input name="filamentDiameter" type="number" min="1" max="4" step="0.01" value="1.75" required></label>
             </div>
             <p class="field-hint" id="clearance-hint">Minimum layer height is checked against the angled physical nozzle tip.</p>
+            <label class="check-field"><input name="overrideLayerClearance" type="checkbox" aria-describedby="clearance-override-warning"><span>I understand and accept the collision risk; override the minimum for regular layers only</span></label>
+            <p class="field-hint is-warning" id="clearance-override-warning">Expert use only: layers below the calculated minimum can cause the tilted nozzle to strike the print or machine, damaging equipment. Verify clearance and simulate or dry-run before printing. First-layer clearance cannot be overridden.</p>
             <fieldset class="visual-choice-group">
               <legend>Nozzle orientation <span>Orientation relative to the extrusion path</span></legend>
               <div class="orientation-options">
