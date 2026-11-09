@@ -1,5 +1,5 @@
-import { generateGcode, minimumLayerHeight, primingSpacing } from "./gcode.mjs?v=mechanical-7";
-import { mechanicalSpecimen } from "./mechanical.mjs?v=mechanical-7";
+import { generateGcode, minimumLayerHeight, primingSpacing } from "./gcode.mjs?v=mechanical-8";
+import { mechanicalSpecimen } from "./mechanical.mjs?v=mechanical-8";
 import { orientedSpecimen } from "./orientation.mjs?v=mechanical-7";
 import { createScenePreview } from "./preview.mjs?v=mechanical-7";
 
@@ -34,6 +34,7 @@ function readConfig() {
   config.brimEnabled = form.elements.namedItem("brimEnabled").checked;
   config.supportEnabled = form.elements.namedItem("supportEnabled").checked;
   config.supportRoofEnabled = form.elements.namedItem("supportRoofEnabled").checked;
+  config.overrideLayerClearance = form.elements.namedItem("overrideLayerClearance").checked;
   config.tiltAxis = axisCount < 4 ? "A"
     : axisCount === 4 ? (rotaryB && !rotaryA ? "B" : "A")
       : axisCount === 5 && config.rotaryPair !== "AB" ? config.rotaryPair[0]
@@ -155,6 +156,11 @@ function updateShapeFields() {
   form.querySelector("#mechanical-options").hidden = !mechanical;
   form.querySelectorAll('input[name="shape"]').forEach((input) => { input.disabled = mechanical; });
   form.querySelectorAll('[name="mechanicalSample"], [name="mechanicalStandard"], [name="mechanicalOrientation"], [name="sampleCount"], [name="sampleSpacing"]').forEach((input) => { input.disabled = !mechanical; });
+  const tensileTypeField = document.querySelector("#tensile-type-field");
+  const showTensileType = mechanical && form.elements.namedItem("mechanicalSample").value === "tensile"
+    && form.elements.namedItem("mechanicalStandard").value === "astm";
+  tensileTypeField.hidden = !showTensileType;
+  form.elements.namedItem("tensileType").disabled = !showTensileType;
   form.elements.namedItem("height").disabled = mechanical;
   for (const [name, visible] of [
     ["width", shape !== "cylinder"],
@@ -169,6 +175,7 @@ function updateShapeFields() {
     const specimen = mechanicalSpecimen(
       form.elements.namedItem("mechanicalSample").value,
       form.elements.namedItem("mechanicalStandard").value,
+      form.elements.namedItem("tensileType").value,
     );
     document.querySelector("#mechanical-dimensions").textContent = describeSpecimen(specimen);
     const oriented = orientedSpecimen(specimen, form.elements.namedItem("mechanicalOrientation").value);
@@ -245,8 +252,8 @@ function updateClearanceHint() {
   const hint = document.querySelector("#clearance-hint");
   try {
     const minimum = minimumLayerHeight(config.tipDiameter, form.elements.namedItem("axisCount").value < 4 ? 0 : config.tiltAngle);
-    hint.textContent = `Collision-safe minimum: ${minimum.toFixed(3)} mm at ${form.elements.namedItem("axisCount").value < 4 ? 0 : config.tiltAngle}° tilt. Layer and first-layer heights must meet this value.`;
-    hint.classList.toggle("is-warning", config.layerHeight < minimum || config.firstLayerHeight < minimum);
+    hint.textContent = `Calculated nozzle-clearance minimum: ${minimum.toFixed(3)} mm at ${form.elements.namedItem("axisCount").value < 4 ? 0 : config.tiltAngle}° tilt. First-layer height must meet this value.${config.overrideLayerClearance ? " Regular-layer override enabled: collision risk is not checked." : " Regular-layer height must also meet this value."}`;
+    hint.classList.toggle("is-warning", config.overrideLayerClearance || config.layerHeight < minimum || config.firstLayerHeight < minimum);
   } catch {
     hint.textContent = "Enter valid nozzle-tip and tilt values to calculate the collision-safe layer-height minimum.";
     hint.classList.remove("is-warning");
