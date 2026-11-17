@@ -657,6 +657,7 @@ function validate(config) {
     heatHotend: config.heatHotend === true || config.heatHotend === "on",
     ...axisLimits,
     printSpeed: ranged(config.printSpeed, "Print speed", 1, 500),
+    travelSpeed: ranged(config.travelSpeed ?? Number(config.printSpeed) * 2, "Travel speed", 1, 1000),
     firstLayerSpeed: ranged(config.firstLayerSpeed, "First layer speed", 1, 200),
     hotendTemp: ranged(config.hotendTemp, "Hotend temperature", 0, 350),
     bedTemp: ranged(config.bedTemp, "Bed temperature", 0, 150),
@@ -1059,8 +1060,8 @@ export function generateGcode(input) {
         }
       }
       const travelZ = path.z + (shouldRetract ? config.zHop : 0);
-      lines.push(`G0 X${format(config.centerX + first.x)} Y${format(config.centerY + first.y)} Z${format(travelZ)}${firstAxisWords ? ` ${firstAxisWords}` : ""} F6000`);
-      if (shouldRetract && config.zHop > 0) lines.push(`G0 Z${format(path.z)} F6000 ; lower Z-hop`);
+      lines.push(`G0 X${format(config.centerX + first.x)} Y${format(config.centerY + first.y)} Z${format(travelZ)}${firstAxisWords ? ` ${firstAxisWords}` : ""} F${format(config.travelSpeed * 60)}`);
+      if (shouldRetract && config.zHop > 0) lines.push(`G0 Z${format(path.z)} F${format(config.travelSpeed * 60)} ; lower Z-hop`);
       if (shouldRetract) {
         if (config.firmwareRetraction) lines.push("G11 ; firmware unretract");
         else {
@@ -1099,7 +1100,7 @@ export function generateGcode(input) {
         lines.push(`G1 E${format(extrusion)} F${format(config.retractSpeed * 60, 0)} ; final retract`);
       }
     }
-    lines.push(`G0 Z${format(currentZ + 10)} F6000`, "M104 S0", "M140 S0", "M107 ; turn off part cooling fan", "M84");
+    lines.push(`G0 Z${format(currentZ + 10)} F${format(config.travelSpeed * 60)}`, "M104 S0", "M140 S0", "M107 ; turn off part cooling fan", "M84");
   }
   const previewIndices = [0, Math.floor((layerHeights.length - 1) / 2), layerHeights.length - 1];
   const previewNames = ["FIRST LAYER", "MIDDLE LAYER", "LAST LAYER"];

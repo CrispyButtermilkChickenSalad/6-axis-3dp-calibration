@@ -1,4 +1,4 @@
-import { generateGcode, minimumLayerHeight, primingSpacing } from "./gcode.mjs?v=mechanical-8";
+import { generateGcode, minimumLayerHeight, primingSpacing } from "./gcode.mjs?v=travel-speed-1";
 import { mechanicalSpecimen } from "./mechanical.mjs?v=mechanical-8";
 import { orientedSpecimen } from "./orientation.mjs?v=mechanical-7";
 import { createScenePreview } from "./preview.mjs?v=mechanical-7";
@@ -18,6 +18,13 @@ const pathColorToggle = document.querySelector("#path-color-toggle");
 const solidViewToggle = document.querySelector("#solid-view-toggle");
 const solidViewWarning = document.querySelector("#solid-view-warning");
 let generated = null;
+let automaticTravelSpeed = true;
+
+function syncTravelSpeed(target) {
+  const travel = form.elements.namedItem("travelSpeed");
+  if (target === travel) automaticTravelSpeed = travel.value === "";
+  if (automaticTravelSpeed) travel.value = String(Number(form.elements.namedItem("printSpeed").value) * 2);
+}
 
 function readConfig() {
   const config = Object.fromEntries(new FormData(form).entries());
@@ -313,7 +320,10 @@ form.addEventListener("change", (event) => {
   updateSupportFields();
   invalidate();
 });
-form.addEventListener("input", invalidate);
+form.addEventListener("input", (event) => {
+  syncTravelSpeed(event.target);
+  invalidate();
+});
 document.querySelector("#reset-view").addEventListener("click", () => preview.reset());
 const themeToggle = document.querySelector("#theme-toggle");
 themeToggle.addEventListener("click", () => {
