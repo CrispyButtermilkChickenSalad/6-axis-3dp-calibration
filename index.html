@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#f5f2f8">
     <title>Tilting nozzle · primitive generator</title>
-    <link rel="stylesheet" href="./styles.css?v=mechanical-7">
-    <script type="module" src="./src/app.mjs?v=mechanical-7"></script>
+    <link rel="stylesheet" href="./styles.css?v=travel-speed-1">
+    <script type="module" src="./src/app.mjs?v=travel-speed-1"></script>
   </head>
   <body>
     <main class="shell">
@@ -194,6 +194,7 @@
               <div class="section-label"><span>PRINT + MATERIAL</span><span class="rule"></span></div>
               <div class="field-grid">
                 <label class="field"><span>Print speed <small>mm/s</small></span><input name="printSpeed" type="number" min="1" max="500" step="1" value="35"></label>
+                <label class="field"><span>Travel speed <small>mm/s; defaults to 2× print speed</small></span><input name="travelSpeed" type="number" min="1" max="1000" step="1" value="70"><small>Follows print speed until edited. Clear to restore the default. Applies to generated travel and Z-hop moves, not custom G-code.</small></label>
                 <label class="field"><span>First layer speed <small>mm/s</small></span><input name="firstLayerSpeed" type="number" min="1" max="200" step="1" value="20"></label>
                 <label class="field"><span>Hotend temperature <small>°C</small></span><input name="hotendTemp" type="number" min="0" max="350" step="1" value="210"></label>
                 <label class="field"><span>Bed temperature <small>°C</small></span><input name="bedTemp" type="number" min="0" max="150" step="1" value="60"></label>

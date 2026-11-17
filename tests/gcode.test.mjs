@@ -547,6 +547,23 @@ test("validates rotary limits, nozzle clearance and bed fit", () => {
   }), /overlap compensation/);
 });
 
+test("travel speed defaults to twice print speed and accepts a custom override", () => {
+  for (const [settings, expected] of [
+    [{ printSpeed: 35 }, 4200],
+    [{ printSpeed: 50 }, 6000],
+    [{ printSpeed: 50, travelSpeed: 85 }, 5100],
+  ]) {
+    const result = generateGcode({ ...baseConfig, ...settings, zHop: 0.5, retractThreshold: 0 });
+    const moves = result.text.split("\n").filter((line) => /^G0 /.test(line));
+    assert.ok(moves.length > 1);
+    assert.ok(moves.every((line) => new RegExp(` F${expected}(?: |$)`).test(line)));
+    assert.ok(moves.some((line) => line.includes("lower Z-hop")));
+  }
+  for (const travelSpeed of [0, -1, 1001, NaN]) {
+    assert.throws(() => generateGcode({ ...baseConfig, travelSpeed }), /Travel speed/);
+  }
+});
+
 test("supports firmware retraction, optional pressure advance, purge, skirt and custom code", () => {
   const result = generateGcode({
     ...baseConfig,
