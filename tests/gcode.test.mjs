@@ -76,6 +76,17 @@ test("computes the physical-tip layer-height clearance", () => {
   assert.equal(minimumLayerHeight(0.8, 0), 0);
 });
 
+test("regular-layer clearance override requires explicit opt-in and never bypasses first-layer clearance", () => {
+  const config = { ...baseConfig, tiltAngle: 30, layerHeight: 0.1, firstLayerHeight: 0.2 };
+  assert.throws(() => generateGcode(config), /Layer height must be at least/);
+  assert.throws(() => generateGcode({ ...config, overrideLayerClearance: "false" }), /Layer height must be at least/);
+  const result = generateGcode({ ...config, overrideLayerClearance: true });
+  assert.match(result.text, /WARNING: Regular layer height is below the calculated nozzle clearance minimum/);
+  assert.throws(() => generateGcode({ ...config, overrideLayerClearance: true, firstLayerHeight: 0.1 }), /First layer height must be at least.*cannot be overridden/);
+  assert.throws(() => generateGcode({ ...config, overrideLayerClearance: true, layerHeight: 0.001 }), /Layer height must be between/);
+  assert.doesNotMatch(generateGcode({ ...baseConfig, overrideLayerClearance: true }).text, /WARNING: Regular layer height/);
+});
+
 test("generates a cube with walls, solid skins, sparse infill and a preview model", () => {
   const result = generateGcode({ ...baseConfig, shape: "cube", width: 20, depth: 99 });
   assert.match(result.text, /Shape: cube; dimensions: 20 x 20 x 2 mm/);
@@ -144,6 +155,27 @@ test("mechanical samples follow ASTM and ISO dimensions", () => {
     const ys = specimen.outline.map((p) => p.y);
     assert.ok(Math.abs(Math.max(...xs) - Math.min(...xs) - length) < 0.01);
     assert.ok(Math.abs(Math.max(...ys) - Math.min(...ys) - width) < 0.01);
+  }
+});
+
+test("ASTM D638 Type V provides a smaller tensile specimen and generates its toolpath", () => {
+  const specimen = mechanicalSpecimen("tensile", "astm", "V");
+  assert.deepEqual(
+    [specimen.length, specimen.width, specimen.thickness, specimen.spec.narrowWidth, specimen.spec.narrowLength, specimen.spec.radius, specimen.spec.gauge, specimen.spec.grip],
+    [63.5, 9.53, 3.2, 3.18, 9.53, 12.7, 7.62, 25.4],
+  );
+  assert.equal(mechanicalSpecimen("tensile", "astm").spec.label, "Tensile · ASTM D638 Type I");
+  assert.throws(() => mechanicalSpecimen("tensile", "astm", "invalid"), /Type I or Type V/);
+  const config = { ...baseConfig, sampleType: "mechanical", mechanicalSample: "tensile", mechanicalStandard: "astm", infillPercent: 100 };
+  const typeV = generateGcode({ ...config, tensileType: "V" });
+  const typeI = generateGcode(config);
+  assert.match(typeV.text, /ASTM D638 Type V/);
+  assert.ok(typeV.metrics.filamentVolume < typeI.metrics.filamentVolume);
+  assert.ok(typeV.preview.allLayers.some((layer) => layer.paths.some((path) => path.type === "solid-infill")));
+  for (const mechanicalOrientation of ["side", "upright"]) {
+    const result = generateGcode({ ...config, tensileType: "V", mechanicalOrientation, layerHeight: 0.5 });
+    assert.match(result.text, /ASTM D638 Type V/);
+    assert.ok(result.metrics.pathCount > 0);
   }
 });
 
@@ -537,7 +569,7 @@ test("optional purge priming uses two overlapping minimum-length lines at 200% f
 
 test("validates rotary limits, nozzle clearance and bed fit", () => {
   assert.throws(() => generateGcode({ ...baseConfig, aMax: 10 }), /outside configured limits/);
-  assert.throws(() => generateGcode({ ...baseConfig, tiltAngle: 40, tipDiameter: 1 }), /Layer height must be at least/);
+  assert.throws(() => generateGcode({ ...baseConfig, tiltAngle: 40, tipDiameter: 1 }), /First layer height must be at least/);
   assert.throws(() => generateGcode({ ...baseConfig, centerX: 10 }), /falls outside the configured bed/);
   assert.throws(() => generateGcode({
     ...baseConfig,

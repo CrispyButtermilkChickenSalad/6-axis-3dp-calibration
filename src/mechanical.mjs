@@ -10,6 +10,11 @@ const PRESETS = {
       length: 165, endWidth: 19, narrowWidth: 13, narrowLength: 57, radius: 76, thickness: 3.2,
       gauge: 50, grip: 115,
     },
+    astmTypeV: {
+      label: "Tensile · ASTM D638 Type V",
+      length: 63.5, endWidth: 9.53, narrowWidth: 3.18, narrowLength: 9.53, radius: 12.7, thickness: 3.2,
+      gauge: 7.62, grip: 25.4,
+    },
     iso: {
       label: "Tensile · ISO 527-2 Type 1A",
       length: 170, endWidth: 20, narrowWidth: 10, narrowLength: 80, radius: 24, thickness: 4,
@@ -70,10 +75,13 @@ function notchedBarOutline(spec) {
 }
 
 /** Flat-printed standard specimen: long axis along X, thickness along Z. */
-export function mechanicalSpecimen(sample, standard = "astm") {
+export function mechanicalSpecimen(sample, standard = "astm", tensileType = "I") {
   if (!MECHANICAL_SAMPLES.includes(sample)) throw new Error("Choose a tensile, flexural or impact sample.");
   if (!MECHANICAL_STANDARDS.includes(standard)) throw new Error("Choose the ASTM or ISO specimen dimensions.");
-  const spec = PRESETS[sample][standard];
+  if (sample === "tensile" && standard === "astm" && !["I", "V"].includes(tensileType)) {
+    throw new Error("Choose ASTM D638 Type I or Type V.");
+  }
+  const spec = PRESETS[sample][sample === "tensile" && standard === "astm" && tensileType === "V" ? "astmTypeV" : standard];
   if (sample === "tensile") {
     return {
       key: sample, standard, label: spec.label, length: spec.length, width: spec.endWidth,
